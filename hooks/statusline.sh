@@ -21,78 +21,127 @@ if [ -z "$input" ]; then
   exit 0
 fi
 
-# Extract key fields using jq
-session_id=$(echo "$input" | jq -r '.session_id // empty')
-used_pct=$(echo "$input" | jq -r '.context_window.used_percentage // 0')
-remaining_pct=$(echo "$input" | jq -r '.context_window.remaining_percentage // 100')
-ctx_size=$(echo "$input" | jq -r '.context_window.context_window_size // 0')
-total_input=$(echo "$input" | jq -r '.context_window.total_input_tokens // 0')
-total_output=$(echo "$input" | jq -r '.context_window.total_output_tokens // 0')
-model=$(echo "$input" | jq -r '.model.id // "unknown"')
-model_display=$(echo "$input" | jq -r '.model.display_name // "Unknown"')
-cwd=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // ""')
-project_dir=$(echo "$input" | jq -r '.workspace.project_dir // ""')
-transcript_path=$(echo "$input" | jq -r '.transcript_path // ""')
+# Capture timestamp once, reuse everywhere
+now=$(date +%s)
 
-# Extract session title from multiple sources
-session_title=""
+# Extract all fields in a single jq invocation (saves ~20 forks)
+IFS='§' read -r session_id used_pct remaining_pct ctx_size total_input total_output \
+  model model_display cwd project_dir transcript_path <<< \
+  "$(jq -r '[
+    .session_id // "",
+    (.context_window.used_percentage // 0 | tostring),
+    (.context_window.remaining_percentage // 100 | tostring),
+    (.context_window.context_window_size // 0 | tostring),
+    (.context_window.total_input_tokens // 0 | tostring),
+    (.context_window.total_output_tokens // 0 | tostring),
+    .model.id // "unknown",
+    .model.display_name // "Unknown",
+    .workspace.current_dir // .cwd // "",
+    .workspace.project_dir // "",
+    .transcript_path // ""
+  ] | join("§")' <<< "$input")"
 
-
-# Source 1: Try sessions-index.json (has the dynamic title Claude shows in resume list)
-if [ -n "$transcript_path" ] && [ -n "$session_id" ]; then
-  # Derive the sessions-index.json path from transcript path
-  transcript_dir=$(dirname "$transcript_path")
-  sessions_index="$transcript_dir/sessions-index.json"
-  if [ -f "$sessions_index" ]; then
-    session_title=$(jq -r --arg sid "$session_id" '.entries[] | select(.sessionId == $sid) | .summary // empty' "$sessions_index" 2>/dev/null)
+# Detect git branch and worktree from project directory (cached for 60s)
+git_branch=""
+git_worktree=""
+git_dir="${project_dir:-$cwd}"
+if [ -n "$git_dir" ] && [ -d "$git_dir" ]; then
+  git_cache="/tmp/jacques-git-$(echo "$git_dir" | tr '/' '-').cache"
+  cache_stale=1
+  if [ -f "$git_cache" ]; then
+    cache_age=$(( now - $(stat -f %m "$git_cache" 2>/dev/null || echo 0) ))
+    [ "$cache_age" -lt 60 ] && cache_stale=0
   fi
-fi
-
-# Source 2: Try transcript summary entries (written during conversation)
-if [ -z "$session_title" ] && [ -n "$transcript_path" ] && [ -f "$transcript_path" ]; then
-  session_title=$(grep '"type":"summary"' "$transcript_path" 2>/dev/null | tail -1 | jq -r '.summary // empty' 2>/dev/null)
-fi
-
-# Source 3: Fallback to first REAL user message (skip internal Claude Code messages)
-if [ -z "$session_title" ] && [ -n "$transcript_path" ] && [ -f "$transcript_path" ]; then
-  # Find first user message that is NOT an internal Claude Code message
-  raw_title=$(grep '"type":"user"' "$transcript_path" 2>/dev/null | while read -r line; do
-    content=$(echo "$line" | jq -r '.message.content // empty' 2>/dev/null)
-    # Skip empty content
-    [ -z "$content" ] && continue
-    # Skip internal Claude Code XML tags and JSON arrays
-    first_char="${content:0:1}"
-    if [ "$first_char" = "<" ] || [ "$first_char" = "[" ]; then
-      continue
+  if [ "$cache_stale" = "1" ]; then
+    git_branch=$(git -C "$git_dir" rev-parse --abbrev-ref HEAD 2>/dev/null)
+    git_git_dir=$(git -C "$git_dir" rev-parse --git-dir 2>/dev/null)
+    git_common_dir=$(git -C "$git_dir" rev-parse --git-common-dir 2>/dev/null)
+    if [ -n "$git_git_dir" ] && [ -n "$git_common_dir" ] && [ "$git_git_dir" != "$git_common_dir" ]; then
+      git_worktree=$(basename "$git_dir")
     fi
-    # Found a real user message
-    echo "$content" | tr '\n' ' ' | head -c 50
-    break
-  done)
-  if [ -n "$raw_title" ]; then
-    session_title="${raw_title}..."
+    printf '%s\n%s' "$git_branch" "$git_worktree" > "$git_cache" 2>/dev/null
+  else
+    git_branch=$(head -1 "$git_cache" 2>/dev/null)
+    git_worktree=$(tail -1 "$git_cache" 2>/dev/null)
+    [ "$git_branch" = "$git_worktree" ] && git_worktree=""
+  fi
+fi
+
+# Extract session title with 5-min cache
+session_title=""
+title_cache="/tmp/jacques-title-${session_id}.cache"
+if [ -n "$session_id" ] && [ -f "$title_cache" ]; then
+  cache_age=$(( now - $(stat -f %m "$title_cache" 2>/dev/null || echo 0) ))
+  if [ "$cache_age" -lt 300 ]; then
+    session_title=$(cat "$title_cache" 2>/dev/null)
+  fi
+fi
+
+if [ -z "$session_title" ]; then
+  # Source 1: Try sessions-index.json (has the dynamic title Claude shows in resume list)
+  if [ -n "$transcript_path" ] && [ -n "$session_id" ]; then
+    transcript_dir=$(dirname "$transcript_path")
+    sessions_index="$transcript_dir/sessions-index.json"
+    if [ -f "$sessions_index" ]; then
+      session_title=$(jq -r --arg sid "$session_id" '.entries[] | select(.sessionId == $sid) | .summary // empty' "$sessions_index" 2>/dev/null)
+    fi
+  fi
+
+  # Source 2: Try transcript summary entries (written during conversation)
+  if [ -z "$session_title" ] && [ -n "$transcript_path" ] && [ -f "$transcript_path" ]; then
+    session_title=$(grep '"type":"summary"' "$transcript_path" 2>/dev/null | tail -1 | jq -r '.summary // empty' 2>/dev/null)
+  fi
+
+  # Source 3: Fallback to first REAL user message (skip internal Claude Code messages)
+  if [ -z "$session_title" ] && [ -n "$transcript_path" ] && [ -f "$transcript_path" ]; then
+    raw_title=$(grep '"type":"user"' "$transcript_path" 2>/dev/null | while read -r line; do
+      content=$(echo "$line" | jq -r '.message.content // empty' 2>/dev/null)
+      [ -z "$content" ] && continue
+      first_char="${content:0:1}"
+      if [ "$first_char" = "<" ] || [ "$first_char" = "[" ]; then
+        continue
+      fi
+      echo "$content" | tr '\n' ' ' | head -c 50
+      break
+    done)
+    if [ -n "$raw_title" ]; then
+      session_title="${raw_title}..."
+    fi
+  fi
+
+  # Cache the extracted title
+  if [ -n "$session_id" ] && [ -n "$session_title" ]; then
+    printf '%s' "$session_title" > "$title_cache" 2>/dev/null
   fi
 fi
 
 
-# Read auto-compact settings from ~/.claude/settings.json
+# Read auto-compact settings with 5-min cache
 autocompact_enabled="true"
 autocompact_threshold="${CLAUDE_AUTOCOMPACT_PCT_OVERRIDE:-95}"
 autocompact_bug_threshold="null"
 
-# Check settings.json for autoCompact setting
-if [ -f "$HOME/.claude/settings.json" ]; then
+settings_cache="/tmp/jacques-settings.cache"
+settings_valid=0
+if [ -f "$settings_cache" ]; then
+  cache_age=$(( now - $(stat -f %m "$settings_cache" 2>/dev/null || echo 0) ))
+  if [ "$cache_age" -lt 300 ]; then
+    IFS='|' read -r autocompact_enabled autocompact_threshold autocompact_bug_threshold < "$settings_cache"
+    settings_valid=1
+  fi
+fi
+
+if [ "$settings_valid" = "0" ] && [ -f "$HOME/.claude/settings.json" ]; then
   ac_setting=$(jq -r '.autoCompact // "null"' "$HOME/.claude/settings.json" 2>/dev/null)
   if [ "$ac_setting" = "false" ]; then
     autocompact_enabled="false"
-    # Known bug: compaction still triggers at ~78% even when disabled
     autocompact_bug_threshold="78"
   fi
+  printf '%s|%s|%s' "$autocompact_enabled" "$autocompact_threshold" "$autocompact_bug_threshold" > "$settings_cache" 2>/dev/null
 fi
 
 # Only proceed if we have a session_id
 if [ -z "$session_id" ]; then
-  # No session_id, just show basic status
   printf "ctx:?%%"
   exit 0
 fi
@@ -116,15 +165,16 @@ fi
 
 # Send to Jacques server (if socket exists and server is running)
 if [ -S /tmp/jacques.sock ]; then
-  # Build JSON payload with autocompact info, terminal identity, and session title
-  timestamp=$(date +%s)
-  # Escape special characters in session_title for JSON
-  escaped_title=$(echo "$session_title" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g' | tr '\n' ' ')
+  # Escape special characters in session_title using bash builtins (saves 1 fork)
+  escaped_title="${session_title//\\/\\\\}"
+  escaped_title="${escaped_title//\"/\\\"}"
+  escaped_title="${escaped_title//$'\t'/\\t}"
+  escaped_title="${escaped_title//$'\n'/ }"
   payload=$(cat <<EOF
-{"event":"context_update","session_id":"$session_id","used_percentage":$used_pct,"remaining_percentage":$remaining_pct,"context_window_size":$ctx_size,"total_input_tokens":$total_input,"total_output_tokens":$total_output,"model":"$model","model_display_name":"$model_display","cwd":"$cwd","project_dir":"$project_dir","timestamp":$timestamp,"autocompact":{"enabled":$autocompact_enabled,"threshold":$autocompact_threshold,"bug_threshold":$autocompact_bug_threshold},"terminal_key":"$terminal_key","session_title":"$escaped_title","transcript_path":"$transcript_path"}
+{"event":"context_update","session_id":"$session_id","used_percentage":$used_pct,"remaining_percentage":$remaining_pct,"context_window_size":$ctx_size,"total_input_tokens":$total_input,"total_output_tokens":$total_output,"model":"$model","model_display_name":"$model_display","cwd":"$cwd","project_dir":"$project_dir","timestamp":$now,"autocompact":{"enabled":$autocompact_enabled,"threshold":$autocompact_threshold,"bug_threshold":$autocompact_bug_threshold},"terminal_key":"$terminal_key","session_title":"$escaped_title","transcript_path":"$transcript_path","git_branch":"$git_branch","git_worktree":"$git_worktree"}
 EOF
 )
-  
+
   # Send to socket (non-blocking, ignore errors)
   echo "$payload" | nc -U /tmp/jacques.sock 2>/dev/null &
 fi
@@ -144,12 +194,17 @@ else
   ac_indicator="AC:OFF"
 fi
 
+# Build branch indicator for status bar
+branch_indicator=""
+if [ -n "$git_branch" ]; then
+  branch_indicator=" @${git_branch}"
+fi
+
 # Add warning indicator based on context level and auto-compact settings
 if [ "$autocompact_enabled" = "false" ] && [ "$used_int" -ge 70 ]; then
-  # Warning: Bug may trigger at ~78% even when disabled
-  printf "[%s] ctx:%s%% ⚠️78%% [%s]" "$model_display" "$used_int" "$ac_indicator"
+  printf "[%s] ctx:%s%%%s ⚠️78%% [%s]" "$model_display" "$used_int" "$branch_indicator" "$ac_indicator"
 elif [ "$used_int" -ge 80 ]; then
-  printf "[%s] ctx:%s%% ⚠️ [%s]" "$model_display" "$used_int" "$ac_indicator"
+  printf "[%s] ctx:%s%%%s ⚠️ [%s]" "$model_display" "$used_int" "$branch_indicator" "$ac_indicator"
 else
-  printf "[%s] ctx:%s%% [%s]" "$model_display" "$used_int" "$ac_indicator"
+  printf "[%s] ctx:%s%%%s [%s]" "$model_display" "$used_int" "$branch_indicator" "$ac_indicator"
 fi
