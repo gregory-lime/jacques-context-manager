@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Loader, AlertTriangle, Wrench, Check } from 'lucide-react';
 import { colors } from '../../styles/theme';
 import { getSubagentFromSession, type SubagentData, type ParsedEntry } from '../../api';
 import { formatTokens } from '../../utils/tokens';
@@ -46,7 +47,7 @@ export function SubagentConversation({ agentId, sessionId, promptPreview }: Suba
   if (loading) {
     return (
       <div style={styles.loadingContainer}>
-        <span style={styles.spinner}>◐</span>
+        <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} />
         <span>Loading subagent conversation...</span>
       </div>
     );
@@ -55,7 +56,7 @@ export function SubagentConversation({ agentId, sessionId, promptPreview }: Suba
   if (error) {
     return (
       <div style={styles.errorContainer}>
-        <span style={styles.errorIcon}>⚠</span>
+        <span style={styles.errorIcon}><AlertTriangle size={16} /></span>
         <span>{error}</span>
         {promptPreview && (
           <div style={styles.fallbackPrompt}>
@@ -160,7 +161,7 @@ function SubagentMessage({ entry }: SubagentMessageProps) {
     const inputSummary = getToolInputSummary(toolName, toolInput);
     return (
       <div style={styles.toolMessage}>
-        <span style={styles.toolIcon}>🔧</span>
+        <span style={styles.toolIcon}><Wrench size={12} /></span>
         <span style={styles.toolName}>{toolName}</span>
         {inputSummary && <span style={styles.toolSummary}>{inputSummary}</span>}
       </div>
@@ -174,7 +175,7 @@ function SubagentMessage({ entry }: SubagentMessageProps) {
       : toolResult;
     return (
       <div style={styles.toolResultMessage}>
-        <span style={styles.toolResultIcon}>✓</span>
+        <span style={styles.toolResultIcon}><Check size={12} /></span>
         <pre style={styles.toolResultContent}>{truncated}</pre>
       </div>
     );
@@ -266,10 +267,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.textMuted,
     fontSize: '13px',
   },
-  spinner: {
-    display: 'inline-block',
-    animation: 'spin 1s linear infinite',
-  },
   errorContainer: {
     display: 'flex',
     flexDirection: 'column' as const,
@@ -279,7 +276,8 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '13px',
   },
   errorIcon: {
-    fontSize: '16px',
+    display: 'inline-flex',
+    alignItems: 'center',
   },
   fallbackPrompt: {
     marginTop: '8px',
@@ -415,7 +413,8 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.textMuted,
   },
   toolIcon: {
-    fontSize: '12px',
+    display: 'inline-flex',
+    alignItems: 'center',
   },
   toolName: {
     fontWeight: 500,
@@ -437,8 +436,9 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.textMuted,
   },
   toolResultIcon: {
+    display: 'inline-flex',
+    alignItems: 'center',
     color: colors.success,
-    fontSize: '12px',
   },
   toolResultContent: {
     flex: 1,

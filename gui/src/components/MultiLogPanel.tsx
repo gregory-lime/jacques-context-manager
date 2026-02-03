@@ -736,13 +736,16 @@ export function MultiLogPanel({
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
-    position: 'relative',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
     backgroundColor: colors.bgSecondary,
     borderTop: `2px solid ${colors.borderSubtle}`,
     boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.15)',
     display: 'flex',
     flexDirection: 'column',
-    flexShrink: 0,
     transition: 'height 150ms ease',
   },
   resizeHandle: {

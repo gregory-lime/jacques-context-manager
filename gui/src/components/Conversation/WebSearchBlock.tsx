@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Search, FileText, ChevronRight, ChevronDown } from 'lucide-react';
 import type { WebSearchContent } from '../../types';
 import { colors } from '../../styles/theme';
 
@@ -9,7 +10,6 @@ interface WebSearchBlockProps {
 export function WebSearchBlock({ content }: WebSearchBlockProps) {
   const [showUrls, setShowUrls] = useState(false);
   const isResults = content.searchType === 'results';
-  const icon = isResults ? '📋' : '🔍';
   const label = isResults
     ? `${content.resultCount || 0} results`
     : 'Searching...';
@@ -18,7 +18,9 @@ export function WebSearchBlock({ content }: WebSearchBlockProps) {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <span style={styles.icon}>{icon}</span>
+        <span style={styles.icon}>
+          {isResults ? <FileText size={14} /> : <Search size={14} />}
+        </span>
         <span style={styles.label}>Web Search</span>
         {content.query && (
           <span style={styles.query}>"{content.query}"</span>
@@ -30,12 +32,15 @@ export function WebSearchBlock({ content }: WebSearchBlockProps) {
             style={styles.toggleButton}
             onClick={() => setShowUrls(!showUrls)}
           >
-            {showUrls ? '▼ Hide URLs' : '▶ Show URLs'}
+            <span style={styles.toggleIcon}>
+              {showUrls ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            </span>
+            {showUrls ? 'Hide URLs' : 'Show URLs'}
           </button>
         )}
       </div>
       {showUrls && content.urls && (
-        <div style={styles.urlList}>
+        <div className="jacques-expand-content" style={styles.urlList}>
           {content.urls.map((item, idx) => (
             <a
               key={idx}
@@ -73,7 +78,9 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: 'wrap' as const,
   },
   icon: {
-    fontSize: '14px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    color: colors.textMuted,
   },
   label: {
     fontSize: '12px',
@@ -98,6 +105,9 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '3px',
   },
   toggleButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
     padding: '2px 8px',
     backgroundColor: 'transparent',
     border: `1px solid ${colors.borderSubtle}`,
@@ -105,6 +115,10 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.accent,
     fontSize: '11px',
     cursor: 'pointer',
+  },
+  toggleIcon: {
+    display: 'inline-flex',
+    alignItems: 'center',
   },
   urlList: {
     display: 'flex',

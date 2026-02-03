@@ -190,3 +190,142 @@ button {
 .bg-primary { background-color: var(--color-bg-primary); }
 .bg-secondary { background-color: var(--color-bg-secondary); }
 .bg-elevated { background-color: var(--color-bg-elevated); }
+
+/* Shared Animations */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.jacques-animate-in {
+  animation: slide-in 0.3s ease-out forwards;
+}
+
+@keyframes expand-in {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 2000px; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.jacques-expand-content {
+  animation: expand-in 0.25s ease-out forwards;
+  overflow: hidden;
+}
+
+.jacques-fade-in {
+  animation: fade-in 0.2s ease-out forwards;
+}
+
+/* Session card hover */
+.jacques-session-card {
+  transition: background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.jacques-session-card:hover {
+  background-color: var(--color-bg-elevated);
+  border-color: #4a4a4a;
+}
+
+.jacques-session-card:hover .jacques-session-card-hint {
+  opacity: 1;
+}
+
+.jacques-indicator:hover {
+  opacity: 0.9 !important;
+}
+
+/* Horizontal scroll for active sessions */
+.jacques-horizontal-scroll {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 8px;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+.jacques-horizontal-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.jacques-horizontal-scroll::-webkit-scrollbar-track {
+  background: var(--color-bg-secondary);
+  border-radius: 3px;
+}
+
+.jacques-horizontal-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-border-subtle);
+  border-radius: 3px;
+}
+
+/* Scroll fade indicator (right edge) */
+.jacques-scroll-fade {
+  position: relative;
+}
+
+.jacques-scroll-fade::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 8px;
+  width: 40px;
+  background: linear-gradient(to right, transparent, var(--color-bg-primary));
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Session history row hover */
+.jacques-history-row {
+  transition: background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.jacques-history-row:hover {
+  background-color: var(--color-bg-elevated);
+  border-color: #4a4a4a;
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
+/* Asset card hover */
+.jacques-asset-item {
+  transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
+.jacques-asset-item:hover {
+  background-color: var(--color-bg-elevated);
+  border-color: #4a4a4a;
+  transform: translateX(2px);
+}
+
+/* Status dot pulse for working state */
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.jacques-skeleton {
+  background: linear-gradient(90deg, #1a1a1a 25%, #252525 50%, #1a1a1a 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 8px;
+}

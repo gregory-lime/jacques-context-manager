@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { Brain, Wrench, MessageCircle, XCircle, Check } from 'lucide-react';
 import type { ConversationMessage, MessageContent, AgentProgressContent, BashProgressContent, MCPProgressContent, WebSearchContent } from '../../types';
 import { colors } from '../../styles/theme';
 import { CollapsibleBlock, type CollapsibleBlockRef } from './CollapsibleBlock';
@@ -93,17 +94,17 @@ export function AssistantMessage({ message, allExpanded = false, sessionId, targ
           <div style={styles.tokenBreakdown}>
             {tokenBreakdown.thinking > 0 && (
               <span style={styles.tokenPill} title="Thinking tokens">
-                💭 {formatTokens(tokenBreakdown.thinking)}
+                <span style={styles.pillIcon}><Brain size={10} /></span> {formatTokens(tokenBreakdown.thinking)}
               </span>
             )}
             {tokenBreakdown.tools > 0 && (
               <span style={styles.tokenPill} title="Tool tokens">
-                🔧 {formatTokens(tokenBreakdown.tools)}
+                <span style={styles.pillIcon}><Wrench size={10} /></span> {formatTokens(tokenBreakdown.tools)}
               </span>
             )}
             {tokenBreakdown.text > 0 && (
               <span style={styles.tokenPill} title="Text tokens">
-                💬 {formatTokens(tokenBreakdown.text)}
+                <span style={styles.pillIcon}><MessageCircle size={10} /></span> {formatTokens(tokenBreakdown.text)}
               </span>
             )}
           </div>
@@ -152,7 +153,7 @@ function ContentRenderer({ content, expanded = false, sessionId, contentRef }: C
         <CollapsibleBlock
           ref={contentRef}
           title="Thinking"
-          icon="💭"
+          icon={<Brain size={14} />}
           summary={`${formatTokens(thinkingTokens)} tok`}
           defaultExpanded={expanded}
         >
@@ -168,7 +169,7 @@ function ContentRenderer({ content, expanded = false, sessionId, contentRef }: C
         <CollapsibleBlock
           ref={contentRef}
           title={`Tool: ${content.name}`}
-          icon="🔧"
+          icon={<Wrench size={14} />}
           summary={`${getToolSummary(content.name, content.input)} · ${formatTokens(toolTokens)} tok`}
           defaultExpanded={expanded}
         >
@@ -187,7 +188,7 @@ function ContentRenderer({ content, expanded = false, sessionId, contentRef }: C
         <CollapsibleBlock
           ref={contentRef}
           title="Tool Result"
-          icon={content.is_error ? '❌' : '✓'}
+          icon={content.is_error ? <XCircle size={14} /> : <Check size={14} />}
           summary={content.is_error ? 'Error' : `${formatTokens(resultTokens)} tok`}
           defaultExpanded={expanded}
         >
@@ -312,12 +313,19 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '6px',
   },
   tokenPill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '3px',
     fontSize: '10px',
     color: colors.textMuted,
     backgroundColor: colors.bgSecondary,
     padding: '2px 6px',
     borderRadius: '3px',
     fontFamily: 'monospace',
+  },
+  pillIcon: {
+    display: 'inline-flex',
+    alignItems: 'center',
   },
   tokenBadge: {
     fontSize: '11px',

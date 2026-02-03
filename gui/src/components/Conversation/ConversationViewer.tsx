@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Bot, Terminal, Plug, Search, Wrench, Brain, ArrowLeft, Filter, ChevronsDown, ChevronsUp, FileText } from 'lucide-react';
 import type { SavedConversation, ConversationMessage, MessageContent } from '../../types';
 import { colors } from '../../styles/theme';
+import { Badge } from '../ui';
 import { UserMessage } from './UserMessage';
 import { AssistantMessageGroup } from './AssistantMessageGroup';
 import { QuestionNavigator } from './QuestionNavigator';
@@ -130,8 +132,6 @@ function groupMessages(messages: ConversationMessage[], autoCompactAt?: string):
   return groups;
 }
 
-type FilterType = 'all' | 'without_tools' | 'messages_only';
-
 /**
  * Content type filters for granular control
  */
@@ -167,8 +167,26 @@ interface NavigationTarget {
   contentId?: string;  // e.g., agentId for subagents
 }
 
+const PLAN_TITLE_PATTERNS = [
+  /^implement the following plan[:\s]*/i,
+  /^here is the plan[:\s]*/i,
+  /^follow this plan[:\s]*/i,
+];
+
+function extractSmartTitle(title: string): string | null {
+  for (const pattern of PLAN_TITLE_PATTERNS) {
+    if (pattern.test(title)) {
+      const rest = title.replace(pattern, '').trim();
+      const headingMatch = rest.match(/^#\s+(.+)$/m);
+      if (headingMatch) return headingMatch[1].trim();
+      const firstLine = rest.split('\n')[0].trim();
+      if (firstLine) return firstLine.length > 60 ? firstLine.slice(0, 57) + '...' : firstLine;
+    }
+  }
+  return null;
+}
+
 export function ConversationViewer({ conversation, onBack }: ConversationViewerProps) {
-  const [filter, setFilter] = useState<FilterType>('all');
   const [contentFilters, setContentFilters] = useState<ContentTypeFilters>(defaultContentFilters);
   const [showContentFilters, setShowContentFilters] = useState(false);
   const [allExpanded, setAllExpanded] = useState(false);
@@ -182,8 +200,8 @@ export function ConversationViewer({ conversation, onBack }: ConversationViewerP
 
   // Filter messages based on selected filter and content type filters
   const filteredMessages = useMemo(() =>
-    filterMessages(conversation.messages, filter, contentFilters),
-    [conversation.messages, filter, contentFilters]
+    filterMessages(conversation.messages, contentFilters),
+    [conversation.messages, contentFilters]
   );
 
   // Group consecutive assistant messages (with auto-compact marker positioning)
@@ -339,55 +357,56 @@ export function ConversationViewer({ conversation, onBack }: ConversationViewerP
 
   return (
     <div style={styles.container}>
-      {/* Header */}
+      {/* Header - TerminalPanel chrome style */}
       <div style={styles.header}>
-        {onBack && (
-          <button style={styles.backButton} onClick={onBack} type="button">
-            ← Back
-          </button>
-        )}
-        <div style={styles.titleSection}>
-          <h2 style={styles.title}>{conversation.title}</h2>
-          <div style={styles.metaRow}>
-            <span style={styles.meta}>
-              {conversation.project} • {conversation.date}
+        <div style={styles.headerTop}>
+          {/* Mac dots + title */}
+          <div style={styles.headerChrome}>
+            {onBack && (
+              <button style={styles.backButton} onClick={onBack} type="button">
+                <ArrowLeft size={14} />
+                <span>back</span>
+              </button>
+            )}
+            <div style={styles.chromeDots}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: colors.dotRed, opacity: 0.7 }} />
+              <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: colors.dotYellow, opacity: 0.7 }} />
+              <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: colors.dotGreen, opacity: 0.7 }} />
+            </div>
+            <span style={styles.chromeTitle}>
+              conversation/{conversation.project}/{conversation.date}.jsonl
             </span>
             {conversation.metadata.hadAutoCompact && (
-              <span style={styles.autoCompactIndicator} title="Context was automatically compacted during this session">
-                ⚡ Auto-compacted
-              </span>
+              <Badge label="Auto-compacted" variant="compacted" />
             )}
+          </div>
+          <div style={styles.titleSection}>
+            {(() => {
+              const smartTitle = extractSmartTitle(conversation.title);
+              return smartTitle ? (
+                <h2 style={styles.title}>
+                  <FileText size={18} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '8px', color: '#34D399' }} />
+                  Plan: {smartTitle}
+                </h2>
+              ) : (
+                <h2 style={styles.title}>{conversation.title}</h2>
+              );
+            })()}
           </div>
         </div>
         <div style={styles.controls}>
-          {/* Filter tabs */}
-          <div style={styles.filterTabs}>
-            {(['all', 'without_tools', 'messages_only'] as FilterType[]).map((f) => (
-              <button
-                key={f}
-                style={{
-                  ...styles.filterTab,
-                  ...(filter === f ? styles.filterTabActive : {}),
-                }}
-                onClick={() => setFilter(f)}
-                type="button"
-              >
-                {f === 'all' ? 'All' : f === 'without_tools' ? 'Without Tools' : 'Messages Only'}
-              </button>
-            ))}
-          </div>
           {/* Content type filters toggle */}
           <div style={styles.filterDropdownContainer}>
             <button
               style={{
-                ...styles.expandButton,
+                ...styles.iconButton,
                 ...(showContentFilters ? { backgroundColor: colors.bgElevated } : {}),
               }}
               onClick={() => setShowContentFilters(!showContentFilters)}
               type="button"
-              title="Filter by content type"
+              title="Filter content types"
             >
-              Filter Content ▾
+              <Filter size={14} />
             </button>
             {showContentFilters && (
               <div style={styles.filterDropdown}>
@@ -398,7 +417,7 @@ export function ConversationViewer({ conversation, onBack }: ConversationViewerP
                     onChange={() => toggleContentFilter('agentProgress')}
                     style={styles.filterCheckbox}
                   />
-                  <span style={styles.filterIcon}>🤖</span> Agents
+                  <Bot size={14} style={styles.filterIconLucide} /> Agents
                 </label>
                 <label style={styles.filterCheckboxLabel}>
                   <input
@@ -407,7 +426,7 @@ export function ConversationViewer({ conversation, onBack }: ConversationViewerP
                     onChange={() => toggleContentFilter('bashProgress')}
                     style={styles.filterCheckbox}
                   />
-                  <span style={styles.filterIcon}>💻</span> Bash
+                  <Terminal size={14} style={styles.filterIconLucide} /> Bash
                 </label>
                 <label style={styles.filterCheckboxLabel}>
                   <input
@@ -416,7 +435,7 @@ export function ConversationViewer({ conversation, onBack }: ConversationViewerP
                     onChange={() => toggleContentFilter('mcpProgress')}
                     style={styles.filterCheckbox}
                   />
-                  <span style={styles.filterIcon}>🔌</span> MCP
+                  <Plug size={14} style={styles.filterIconLucide} /> MCP
                 </label>
                 <label style={styles.filterCheckboxLabel}>
                   <input
@@ -425,7 +444,7 @@ export function ConversationViewer({ conversation, onBack }: ConversationViewerP
                     onChange={() => toggleContentFilter('webSearch')}
                     style={styles.filterCheckbox}
                   />
-                  <span style={styles.filterIcon}>🔍</span> Search
+                  <Search size={14} style={styles.filterIconLucide} /> Search
                 </label>
                 <label style={styles.filterCheckboxLabel}>
                   <input
@@ -434,7 +453,7 @@ export function ConversationViewer({ conversation, onBack }: ConversationViewerP
                     onChange={() => toggleContentFilter('toolCalls')}
                     style={styles.filterCheckbox}
                   />
-                  <span style={styles.filterIcon}>🔧</span> Tools
+                  <Wrench size={14} style={styles.filterIconLucide} /> Tools
                 </label>
                 <label style={styles.filterCheckboxLabel}>
                   <input
@@ -443,18 +462,19 @@ export function ConversationViewer({ conversation, onBack }: ConversationViewerP
                     onChange={() => toggleContentFilter('thinking')}
                     style={styles.filterCheckbox}
                   />
-                  <span style={styles.filterIcon}>💭</span> Thinking
+                  <Brain size={14} style={styles.filterIconLucide} /> Thinking
                 </label>
               </div>
             )}
           </div>
           {/* Expand/Collapse */}
           <button
-            style={styles.expandButton}
+            style={styles.iconButton}
             onClick={() => setAllExpanded(!allExpanded)}
             type="button"
+            title={allExpanded ? 'Collapse all' : 'Expand all'}
           >
-            {allExpanded ? 'Collapse All' : 'Expand All'}
+            {allExpanded ? <ChevronsUp size={14} /> : <ChevronsDown size={14} />}
           </button>
         </div>
       </div>
@@ -560,33 +580,39 @@ export function ConversationViewer({ conversation, onBack }: ConversationViewerP
         />
       )}
 
-      {/* Footer with stats */}
+      {/* Footer with stat badges */}
       <div style={styles.footer}>
-        <span>{filteredMessages.length} messages</span>
-        <span>•</span>
+        <Badge label={`${filteredMessages.length} messages`} variant="default" />
         {tokenStats.hasActualTokens ? (
           <>
-            <span style={styles.tokenStat}>
-              {formatTokens(tokenStats.totalContextTokens)} context, {formatTokens(tokenStats.actualOutputTokens)} out
-            </span>
+            <Badge
+              label={`${formatTokens(tokenStats.totalContextTokens)} context`}
+              variant="default"
+            />
+            <Badge
+              label={`${formatTokens(tokenStats.actualOutputTokens)} out`}
+              variant="default"
+            />
             {(tokenStats.actualCacheCreation > 0 || tokenStats.actualCacheRead > 0) && (
               <span style={styles.cacheStat} title={`Non-cached: ${formatTokens(tokenStats.actualInputTokens)}, Cache created: ${formatTokens(tokenStats.actualCacheCreation)}, Cache read: ${formatTokens(tokenStats.actualCacheRead)}`}>
                 ({formatTokens(tokenStats.actualCacheRead)} cached)
               </span>
             )}
             {conversation.metadata.subagents && conversation.metadata.subagents.totalTokens > 0 && (
-              <span style={styles.subagentStat}>
-                + {formatTokens(conversation.metadata.subagents.totalTokens)} subagents
-              </span>
+              <Badge
+                label={`+ ${formatTokens(conversation.metadata.subagents.totalTokens)} subagents`}
+                variant="agent"
+              />
             )}
           </>
         ) : (
-          <span style={styles.tokenStat}>~{formatTokens(totalTokens)} tokens</span>
+          <Badge label={`~${formatTokens(totalTokens)} tokens`} variant="default" />
         )}
         {conversation.metadata.technologies && conversation.metadata.technologies.length > 0 && (
           <>
-            <span>•</span>
-            <span>{conversation.metadata.technologies.join(', ')}</span>
+            {conversation.metadata.technologies.map(tech => (
+              <Badge key={tech} label={tech} variant="default" />
+            ))}
           </>
         )}
       </div>
@@ -619,7 +645,6 @@ function shouldIncludeContent(content: MessageContent, filters: ContentTypeFilte
 
 function filterMessages(
   messages: ConversationMessage[],
-  filter: FilterType,
   contentFilters: ContentTypeFilters
 ): ConversationMessage[] {
   return messages.map((msg) => {
@@ -627,26 +652,9 @@ function filterMessages(
       return msg;
     }
 
-    // Filter assistant message content based on both filter type and content filters
+    // Filter assistant message content based on content type filters
     const filteredContent = msg.content.filter((content) => {
-      // First check base filter
-      if (filter === 'without_tools') {
-        if (content.type === 'tool_use' || content.type === 'tool_result') {
-          return false;
-        }
-      }
-      if (filter === 'messages_only') {
-        if (content.type !== 'text') {
-          return false;
-        }
-      }
-
-      // Then apply content type filters (only when not in messages_only mode)
-      if (filter !== 'messages_only') {
-        return shouldIncludeContent(content, contentFilters);
-      }
-
-      return true;
+      return shouldIncludeContent(content, contentFilters);
     });
 
     return { ...msg, content: filteredContent };
@@ -658,24 +666,56 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column' as const,
     height: '100%',
-    maxHeight: 'calc(100vh - 48px)',
+    maxHeight: '100vh',
   },
   header: {
     display: 'flex',
-    alignItems: 'center',
-    gap: '16px',
-    padding: '16px',
+    flexDirection: 'column' as const,
+    gap: '12px',
+    padding: '12px 16px',
     borderBottom: `1px solid ${colors.borderSubtle}`,
     backgroundColor: colors.bgSecondary,
+    overflow: 'visible',
+    position: 'relative' as const,
+    zIndex: 10,
+  },
+  headerTop: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '8px',
+  },
+  headerChrome: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  chromeDots: {
+    display: 'flex',
+    gap: '6px',
+    flexShrink: 0,
+  },
+  chromeTitle: {
+    fontSize: '11px',
+    color: colors.textMuted,
+    fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
+    flex: 1,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
   },
   backButton: {
-    padding: '8px 12px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '4px 10px',
     border: `1px solid ${colors.borderSubtle}`,
-    borderRadius: '6px',
+    borderRadius: '4px',
     backgroundColor: 'transparent',
     color: colors.textSecondary,
     cursor: 'pointer',
-    fontSize: '13px',
+    fontSize: '12px',
+    fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
+    flexShrink: 0,
   },
   titleSection: {
     flex: 1,
@@ -686,57 +726,23 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.textPrimary,
     margin: 0,
   },
-  meta: {
-    fontSize: '13px',
-    color: colors.textMuted,
-  },
-  metaRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-  },
-  autoCompactIndicator: {
-    fontSize: '12px',
-    color: colors.warning || '#f5a623',
-    backgroundColor: 'rgba(245, 166, 35, 0.15)',
-    padding: '2px 8px',
-    borderRadius: '4px',
-    fontWeight: 500,
-  },
   controls: {
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
   },
-  filterTabs: {
+  iconButton: {
+    width: '32px',
+    height: '32px',
     display: 'flex',
-    gap: '4px',
-    backgroundColor: colors.bgPrimary,
-    padding: '4px',
-    borderRadius: '6px',
-  },
-  filterTab: {
-    padding: '6px 12px',
-    border: 'none',
-    borderRadius: '4px',
-    backgroundColor: 'transparent',
-    color: colors.textMuted,
-    cursor: 'pointer',
-    fontSize: '12px',
-    transition: 'all 150ms ease',
-  },
-  filterTabActive: {
-    backgroundColor: colors.bgElevated,
-    color: colors.accent,
-  },
-  expandButton: {
-    padding: '6px 12px',
+    alignItems: 'center',
+    justifyContent: 'center',
     border: `1px solid ${colors.borderSubtle}`,
     borderRadius: '4px',
     backgroundColor: 'transparent',
     color: colors.textSecondary,
     cursor: 'pointer',
-    fontSize: '12px',
+    padding: 0,
   },
   filterDropdownContainer: {
     position: 'relative' as const,
@@ -744,7 +750,7 @@ const styles: Record<string, React.CSSProperties> = {
   filterDropdown: {
     position: 'absolute' as const,
     top: '100%',
-    right: 0,
+    left: 0,
     marginTop: '4px',
     backgroundColor: colors.bgElevated,
     border: `1px solid ${colors.borderSubtle}`,
@@ -771,8 +777,9 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     accentColor: colors.accent,
   },
-  filterIcon: {
-    fontSize: '14px',
+  filterIconLucide: {
+    opacity: 0.7,
+    flexShrink: 0,
   },
   contentArea: {
     display: 'flex',
@@ -781,7 +788,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   messages: {
     flex: 1,
-    padding: '24px',
+    padding: '16px',
     overflow: 'auto',
     position: 'relative' as const,
   },
@@ -843,12 +850,10 @@ const styles: Record<string, React.CSSProperties> = {
   // Chat-style layout wrappers
   userMessageWrapper: {
     display: 'flex',
-    justifyContent: 'flex-start',
-    paddingRight: '15%',
+    marginBottom: '8px',
   },
   assistantMessageWrapper: {
     display: 'flex',
-    justifyContent: 'flex-end',
-    paddingLeft: '15%',
+    marginBottom: '8px',
   },
 };

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FileText, ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
 import type { ConversationMessage } from '../../types';
 import { colors } from '../../styles/theme';
 import { estimateTokens, formatTokens } from '../../utils/tokens';
@@ -124,7 +125,7 @@ export function UserMessage({ message }: UserMessageProps) {
         <div style={styles.headerRight}>
           {hasPlan && (
             <span style={styles.planIndicator}>
-              📋 Has Plan
+              <FileText size={12} /> Has Plan
             </span>
           )}
           <span style={styles.tokenBadge} title={`~${tokens} tokens`}>
@@ -151,16 +152,18 @@ export function UserMessage({ message }: UserMessageProps) {
                     style={styles.planHeader}
                     onClick={() => setPlanExpanded(!planExpanded)}
                   >
-                    <span style={styles.planIcon}>📋</span>
+                    <span style={styles.planIcon}>
+                      <FileText size={16} />
+                    </span>
                     <span style={styles.planTitle}>{part.planTitle}</span>
                     <span style={styles.planToggle}>
-                      {planExpanded ? '▼' : '▶'}
+                      {planExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </span>
                   </button>
 
                   {/* Plan content */}
                   {planExpanded && (
-                    <div style={styles.planContent}>
+                    <div className="jacques-expand-content" style={styles.planContent}>
                       <MarkdownRenderer content={part.content} />
                     </div>
                   )}
@@ -195,7 +198,10 @@ export function UserMessage({ message }: UserMessageProps) {
             style={styles.expandButton}
             onClick={() => setIsExpanded(!isExpanded)}
           >
-            {isExpanded ? '▲ Show less' : `▼ Show more (${lineCount} lines)`}
+            <span style={styles.expandIcon}>
+              {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            </span>
+            {isExpanded ? 'Show less' : `Show more (${lineCount} lines)`}
           </button>
         )}
       </div>
@@ -208,6 +214,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: colors.bgSecondary,
     borderRadius: '8px',
     border: `1px solid ${colors.borderSubtle}`,
+    borderLeft: `2px solid ${colors.accent}`,
     overflow: 'hidden',
     marginBottom: '16px',
     width: '100%',
@@ -230,6 +237,9 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.textPrimary,
   },
   planIndicator: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
     fontSize: '11px',
     color: '#34D399',
     backgroundColor: 'rgba(52, 211, 153, 0.15)',
@@ -273,7 +283,8 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '8px',
     width: '100%',
-    padding: '12px 16px',
+    padding: '8px 12px',
+    minHeight: '36px',
     backgroundColor: 'rgba(52, 211, 153, 0.1)',
     border: 'none',
     borderBottom: `1px solid rgba(52, 211, 153, 0.3)`,
@@ -281,25 +292,31 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'left' as const,
   },
   planIcon: {
-    fontSize: '16px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    color: '#34D399',
   },
   planTitle: {
     flex: 1,
     fontSize: '14px',
     fontWeight: 600,
     color: '#34D399',
+    overflow: 'visible',
+    whiteSpace: 'normal' as const,
+    wordBreak: 'break-word' as const,
   },
   planToggle: {
-    fontSize: '12px',
+    display: 'inline-flex',
+    alignItems: 'center',
     color: colors.textMuted,
   },
   planContent: {
-    padding: '16px',
+    padding: '8px 12px',
     maxHeight: '500px',
     overflow: 'auto',
   },
   planPreview: {
-    padding: '12px 16px',
+    padding: '8px 12px',
     color: colors.textMuted,
     fontSize: '13px',
     whiteSpace: 'pre-wrap' as const,
@@ -307,7 +324,9 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
   },
   expandButton: {
-    display: 'inline-block',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
     padding: '6px 12px',
     marginTop: '12px',
     backgroundColor: colors.bgElevated,
@@ -316,5 +335,9 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.textMuted,
     fontSize: '12px',
     cursor: 'pointer',
+  },
+  expandIcon: {
+    display: 'inline-flex',
+    alignItems: 'center',
   },
 };

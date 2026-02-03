@@ -1,3 +1,5 @@
+import { useState, type ReactNode } from 'react';
+import { FileText, PenTool, ChevronDown, ChevronRight } from 'lucide-react';
 import type { ConversationMessage, ToolUseContent } from '../../types';
 import { colors } from '../../styles/theme';
 
@@ -96,11 +98,11 @@ function looksLikeMarkdownPlan(content: string): boolean {
 /**
  * Get icon and color for plan source
  */
-function getPlanSourceStyle(source: 'embedded' | 'write'): { icon: string; color: string; label: string } {
+function getPlanSourceStyle(source: 'embedded' | 'write'): { icon: ReactNode; color: string; label: string } {
   if (source === 'embedded') {
-    return { icon: '📋', color: '#34D399', label: 'Embedded' };
+    return { icon: <FileText size={12} />, color: '#34D399', label: 'Embedded' };
   }
-  return { icon: '📝', color: '#60A5FA', label: 'Written' };
+  return { icon: <PenTool size={12} />, color: '#60A5FA', label: 'Written' };
 }
 
 /**
@@ -125,6 +127,9 @@ export function PlanNavigator({
   onNavigate,
   onViewPlan,
 }: PlanNavigatorProps) {
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+
   // Extract all plans from messages
   const plans: DetectedPlan[] = [];
 
@@ -233,8 +238,14 @@ export function PlanNavigator({
 
   return (
     <div style={styles.container}>
-      <div style={styles.header}>Plans ({plans.length})</div>
-      <div style={styles.list}>
+      <div style={{ ...styles.header, cursor: 'pointer' }} onClick={() => setCollapsed(!collapsed)}>
+        <span style={styles.headerIcon}><FileText size={14} /></span>
+        <span style={{ flex: 1 }}>Plans ({plans.length})</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', color: colors.textMuted }}>
+          {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+        </span>
+      </div>
+      {!collapsed && <div style={styles.list}>
         {sortedSources.map((source) => {
           const sourcePlans = bySource.get(source) || [];
           const sourceStyle = getPlanSourceStyle(source);
@@ -242,7 +253,9 @@ export function PlanNavigator({
           return (
             <div key={source} style={styles.sourceGroup}>
               <div style={styles.sourceHeader}>
-                <span style={{ color: sourceStyle.color }}>{sourceStyle.icon}</span>
+                <span style={{ color: sourceStyle.color, display: 'inline-flex', alignItems: 'center' }}>
+                  {sourceStyle.icon}
+                </span>
                 <span style={{ color: sourceStyle.color, fontWeight: 500 }}>
                   {sourceStyle.label}
                 </span>
@@ -251,6 +264,7 @@ export function PlanNavigator({
               {sourcePlans.map((plan, idx) => {
                 const isActive = plan === activePlan;
                 const planKey = `${plan.source}-${plan.messageIndex}-${idx}`;
+                const isHovered = hoveredKey === planKey;
 
                 return (
                   <div key={planKey} style={styles.planItem}>
@@ -258,14 +272,19 @@ export function PlanNavigator({
                       style={{
                         ...styles.navButton,
                         ...(isActive ? styles.navButtonActive : {}),
+                        ...(isHovered && !isActive ? styles.navButtonHovered : {}),
                       }}
                       onClick={() => onNavigate(plan.messageIndex, plan.contentIndex)}
+                      onMouseEnter={() => setHoveredKey(planKey)}
+                      onMouseLeave={() => setHoveredKey(null)}
                       title={plan.preview}
                       type="button"
                     >
-                      <span style={styles.marker}>
-                        {isActive ? '▶' : '─'}
-                      </span>
+                      <span style={{
+                        ...styles.marker,
+                        backgroundColor: isActive ? colors.accent : 'transparent',
+                        border: isActive ? 'none' : `1px solid ${colors.borderSubtle}`,
+                      }} />
                       <span style={styles.planTitle}>{plan.title}</span>
                     </button>
                     {onViewPlan && (
@@ -289,7 +308,7 @@ export function PlanNavigator({
             </div>
           );
         })}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -302,11 +321,19 @@ const styles: Record<string, React.CSSProperties> = {
     borderTop: `1px solid ${colors.borderSubtle}`,
   },
   header: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
     padding: '12px 16px',
     fontSize: '12px',
     fontWeight: 600,
     color: colors.textSecondary,
     borderBottom: `1px solid ${colors.borderSubtle}`,
+  },
+  headerIcon: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    color: colors.accent,
   },
   list: {
     flex: 1,
@@ -339,7 +366,8 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '8px',
     flex: 1,
-    padding: '6px 8px',
+    padding: '8px 10px',
+    minHeight: '36px',
     border: 'none',
     backgroundColor: 'transparent',
     borderRadius: '4px',
@@ -353,8 +381,13 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: colors.bgElevated,
     color: colors.accent,
   },
+  navButtonHovered: {
+    backgroundColor: colors.bgElevated,
+  },
   marker: {
-    fontSize: '10px',
+    width: '6px',
+    height: '6px',
+    borderRadius: '50%',
     flexShrink: 0,
   },
   planTitle: {
