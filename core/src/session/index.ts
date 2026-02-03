@@ -7,6 +7,8 @@ export {
   listProjectSessions,
   getProjectDirPath,
   encodeProjectPath,
+  decodeProjectPath,
+  decodeProjectPathNaive,
   findSessionById,
   listSubagentFiles,
 } from "./detector.js";

@@ -17,7 +17,7 @@ import { promises as fs } from "fs";
 import * as path from "path";
 import { homedir } from "os";
 import { parseJSONL, getEntryStatistics, type ParsedEntry } from "../session/parser.js";
-import { listSubagentFiles, type SubagentFile } from "../session/detector.js";
+import { listSubagentFiles, decodeProjectPath, type SubagentFile } from "../session/detector.js";
 import { PLAN_TRIGGER_PATTERNS, extractPlanTitle } from "../archive/plan-extractor.js";
 
 /** Claude projects directory */
@@ -130,26 +130,8 @@ export function getDefaultSessionIndex(): SessionIndex {
   };
 }
 
-/**
- * Decode a project path from Claude's encoded directory name.
- * Claude encodes paths by replacing / with - (keeping leading dash for root).
- * Example: "-Users-gole-Desktop-my-project" -> "/Users/gole/Desktop/my-project"
- */
-export function decodeProjectPath(encodedDir: string): string {
-  // The first character is always a dash (representing the root /)
-  // Subsequent dashes represent path separators
-  if (!encodedDir.startsWith("-")) {
-    return encodedDir;
-  }
-
-  // Split on dashes, keeping in mind that the first one is root
-  // "-Users-gole-Desktop" -> ["", "Users", "gole", "Desktop"]
-  const parts = encodedDir.split("-");
-
-  // Reconstruct the path
-  // First part is empty (before leading dash), so start with /
-  return "/" + parts.slice(1).join("/");
-}
+// Re-export for backwards compatibility (cache/index.ts exports this)
+export { decodeProjectPath };
 
 /**
  * Get the cache directory path
@@ -606,7 +588,7 @@ export async function listAllProjects(): Promise<
 
     for (const entry of entries) {
       if (entry.isDirectory()) {
-        const projectPath = decodeProjectPath(entry.name);
+        const projectPath = await decodeProjectPath(entry.name);
         const projectSlug = path.basename(projectPath);
 
         projects.push({

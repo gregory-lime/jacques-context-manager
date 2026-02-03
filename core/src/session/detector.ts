@@ -6,6 +6,10 @@
  *   ~/.claude/projects/[encoded-directory-path]/[session-uuid].jsonl
  *
  * Encoding rule: Replace '/' with '-' (e.g., /Users/gole/Desktop/project → -Users-gole-Desktop-project)
+ *
+ * IMPORTANT: Claude Code encodes BOTH '/' AND '_' as '-', making naive
+ * string-based reversal impossible. Use decodeProjectPath() which reads
+ * the authoritative originalPath from sessions-index.json.
  */
 
 import { promises as fs } from "fs";
@@ -39,6 +43,52 @@ export function encodeProjectPath(dirPath: string): string {
   // Normalize the path and replace slashes with dashes
   const normalized = path.normalize(dirPath);
   return normalized.replace(/\//g, "-");
+}
+
+/**
+ * Read the originalPath field from a project's sessions-index.json.
+ * Claude Code stores the real filesystem path here, which is the only
+ * reliable way to reverse the encoded directory name.
+ */
+async function readOriginalPath(
+  encodedDir: string,
+  claudeProjectsDir?: string
+): Promise<string | null> {
+  const claudeDir =
+    claudeProjectsDir || path.join(os.homedir(), ".claude", "projects");
+  const indexPath = path.join(claudeDir, encodedDir, "sessions-index.json");
+  try {
+    const content = await fs.readFile(indexPath, "utf-8");
+    const data = JSON.parse(content);
+    return typeof data.originalPath === "string" ? data.originalPath : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Naive decode: replace all dashes with slashes.
+ * This is WRONG for paths containing dashes or underscores, but serves
+ * as a fallback when sessions-index.json is unavailable.
+ */
+export function decodeProjectPathNaive(encodedDir: string): string {
+  if (!encodedDir.startsWith("-")) {
+    return encodedDir;
+  }
+  return "/" + encodedDir.slice(1).split("-").join("/");
+}
+
+/**
+ * Decode an encoded project directory name to the real filesystem path.
+ * Uses sessions-index.json's originalPath as the authoritative source.
+ * Falls back to naive decode when unavailable.
+ */
+export async function decodeProjectPath(
+  encodedDir: string,
+  claudeProjectsDir?: string
+): Promise<string> {
+  const original = await readOriginalPath(encodedDir, claudeProjectsDir);
+  return original || decodeProjectPathNaive(encodedDir);
 }
 
 /**

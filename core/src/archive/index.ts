@@ -102,6 +102,7 @@ export {
 // Bulk Archive
 export {
   decodeProjectPath,
+  decodeProjectPathNaive,
   listAllProjects,
   listAllSessions,
   isSessionArchived,
@@ -132,6 +133,7 @@ export {
   migrateToProjectId,
   isMigrationNeeded,
   getMigrationStatus,
+  migrateProjectPaths,
 } from "./migration.js";
 
-export type { MigrationResult } from "./migration.js";
+export type { MigrationResult, PathMigrationResult } from "./migration.js";

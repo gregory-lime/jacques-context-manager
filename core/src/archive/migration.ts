@@ -5,7 +5,6 @@
  * to existing manifests that only have projectSlug.
  */
 
-import { promises as fs } from "fs";
 import * as path from "path";
 import {
   listManifests,
@@ -18,6 +17,7 @@ import {
 import { addToIndex } from "./search-indexer.js";
 import { getDefaultSearchIndex } from "./types.js";
 import type { ConversationManifest, SearchIndex } from "./types.js";
+import { decodeProjectPath } from "../session/detector.js";
 
 /**
  * Result of a migration operation
@@ -153,4 +153,77 @@ export async function getMigrationStatus(): Promise<{
     needsMigration,
     alreadyMigrated,
   };
+}
+
+/**
+ * Result of project path migration
+ */
+export interface PathMigrationResult {
+  /** Number of manifests whose projectPath/projectSlug were updated */
+  updated: number;
+  /** Number of manifests that were already correct */
+  skipped: number;
+  /** Errors encountered */
+  errors: string[];
+}
+
+/**
+ * Migrate manifest project paths using the fixed decodeProjectPath().
+ *
+ * Re-decodes each manifest's projectId (which is the encoded dir name)
+ * to get the correct projectPath and projectSlug using sessions-index.json.
+ * Updates manifests where the decoded values differ from what's stored.
+ */
+export async function migrateProjectPaths(): Promise<PathMigrationResult> {
+  const result: PathMigrationResult = {
+    updated: 0,
+    skipped: 0,
+    errors: [],
+  };
+
+  try {
+    const manifestIds = await listManifests();
+
+    for (const id of manifestIds) {
+      try {
+        const manifest = await readManifest(id);
+        if (!manifest) {
+          result.errors.push(`Could not read manifest: ${id}`);
+          continue;
+        }
+
+        // Use projectId (encoded path) to re-decode
+        const encodedDir = manifest.projectId || manifest.projectPath?.replace(/\//g, "-");
+        if (!encodedDir) {
+          result.errors.push(`Manifest ${id} has no projectId or projectPath`);
+          continue;
+        }
+
+        const correctPath = await decodeProjectPath(encodedDir);
+        const correctSlug = path.basename(correctPath);
+
+        // Check if update is needed
+        if (manifest.projectPath === correctPath && manifest.projectSlug === correctSlug) {
+          result.skipped++;
+          continue;
+        }
+
+        // Update the manifest
+        manifest.projectPath = correctPath;
+        manifest.projectSlug = correctSlug;
+        await saveManifest(manifest);
+        result.updated++;
+      } catch (err) {
+        result.errors.push(
+          `Failed to migrate manifest ${id}: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
+  } catch (err) {
+    result.errors.push(
+      `Migration failed: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+
+  return result;
 }

@@ -49,6 +49,8 @@ export {
   listProjectSessions,
   getProjectDirPath,
   encodeProjectPath,
+  decodeProjectPath as decodeSessionProjectPath,
+  decodeProjectPathNaive as decodeSessionProjectPathNaive,
   findSessionById,
   listSubagentFiles,
   // Parser
@@ -145,6 +147,7 @@ export {
   getArchiveStats,
   // Bulk archive
   decodeProjectPath,
+  decodeProjectPathNaive,
   listAllProjects,
   listAllSessions,
   isSessionArchived,

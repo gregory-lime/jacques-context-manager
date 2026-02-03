@@ -26,7 +26,10 @@ import { archiveConversation, listManifests } from "./archive-store.js";
 import { parseJSONL, getEntryStatistics } from "../session/parser.js";
 import { transformToSavedContext } from "../session/transformer.js";
 import { FilterType, applyFilter } from "../session/filters.js";
-import { listSubagentFiles } from "../session/detector.js";
+import { listSubagentFiles, decodeProjectPath, decodeProjectPathNaive } from "../session/detector.js";
+
+// Re-export for backwards compatibility (archive/index.ts exports these)
+export { decodeProjectPath, decodeProjectPathNaive };
 import {
   archiveSubagent,
   isSubagentArchived,
@@ -37,27 +40,6 @@ import {
 
 /** Claude projects directory */
 const CLAUDE_PROJECTS_PATH = path.join(homedir(), ".claude", "projects");
-
-/**
- * Decode a project path from Claude's encoded directory name.
- * Claude encodes paths by replacing / with - (keeping leading dash for root).
- * Example: "-Users-gole-Desktop-my-project" -> "/Users/gole/Desktop/my-project"
- */
-export function decodeProjectPath(encodedDir: string): string {
-  // The first character is always a dash (representing the root /)
-  // Subsequent dashes represent path separators
-  if (!encodedDir.startsWith("-")) {
-    return encodedDir;
-  }
-
-  // Split on dashes, keeping in mind that the first one is root
-  // "-Users-gole-Desktop" -> ["", "Users", "gole", "Desktop"]
-  const parts = encodedDir.split("-");
-
-  // Reconstruct the path
-  // First part is empty (before leading dash), so start with /
-  return "/" + parts.slice(1).join("/");
-}
 
 /**
  * List all project directories in ~/.claude/projects/
@@ -79,7 +61,7 @@ export async function listAllProjects(): Promise<
 
     for (const entry of entries) {
       if (entry.isDirectory()) {
-        const projectPath = decodeProjectPath(entry.name);
+        const projectPath = await decodeProjectPath(entry.name);
         // Generate projectId from full path using dash-encoding
         const projectId = projectPath.replace(/\//g, "-");
         const projectSlug = path.basename(projectPath);

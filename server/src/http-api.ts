@@ -10,7 +10,7 @@ import { createServer, IncomingMessage, ServerResponse, Server } from 'http';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'fs';
 import { promises as fsPromises } from 'fs';
 import { homedir } from 'os';
-import { join, extname, dirname } from 'path';
+import { join, extname, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
 import {
   getArchiveStats,
@@ -33,6 +33,8 @@ import {
   listSubagentFiles,
   // Direct file lookup for cache bypass
   findSessionById,
+  // Project path decoding
+  decodeProjectPath,
 } from '@jacques/core';
 import type {
   ConversationManifest,
@@ -550,8 +552,8 @@ export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpA
           const pathParts = sessionFile.filePath.split('/');
           const projectsIdx = pathParts.indexOf('projects');
           const encodedPath = projectsIdx >= 0 ? pathParts[projectsIdx + 1] : '';
-          const projectPath = encodedPath.replace(/-/g, '/');
-          const projectSlug = projectPath.split('/').filter(Boolean).pop() || 'unknown';
+          const projectPath = await decodeProjectPath(encodedPath);
+          const projectSlug = basename(projectPath);
 
           sessionEntry = {
             id,
