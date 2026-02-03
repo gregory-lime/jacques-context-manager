@@ -1,0 +1,46 @@
+{
+  "name": "jacques-context-manager",
+  "version": "0.1.0",
+  "description": "Claude Code context monitor - track token usage in real-time",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "core",
+    "server",
+    "dashboard",
+    "gui"
+  ],
+  "scripts": {
+    "install:all": "npm run install:core && npm run install:server && npm run install:dashboard",
+    "install:core": "cd core && npm install",
+    "install:server": "cd server && npm install",
+    "install:dashboard": "cd dashboard && npm install",
+    "build:all": "npm run build:core && npm run build:server && npm run build:dashboard && npm run build:gui",
+    "build:core": "cd core && npm run build",
+    "build:server": "cd server && npm run build",
+    "build:dashboard": "cd dashboard && npm run build",
+    "build:gui": "cd gui && npm run build",
+    "start:server": "cd server && npm start",
+    "stop:server": "if [ -f ~/.jacques/server.pid ]; then kill $(cat ~/.jacques/server.pid) 2>/dev/null; rm -f ~/.jacques/server.pid; echo 'Server stopped'; else lsof -ti :4243 | xargs kill 2>/dev/null || echo 'No server running'; fi",
+    "restart:server": "npm run stop:server && sleep 1 && npm run start:server",
+    "start:dashboard": "cd dashboard && node dist/cli.js",
+    "start:gui": "cd gui && npm run dev",
+    "start": "npm run start:server",
+    "dashboard": "cd dashboard && node dist/cli.js",
+    "dev:core": "cd core && npm run dev",
+    "dev:server": "cd server && npm run dev",
+    "dev:dashboard": "cd dashboard && npm run dev",
+    "dev:gui": "cd gui && npm run dev",
+    "test": "cd server && npm test",
+    "test:core": "cd core && npm test",
+    "test:dashboard": "cd dashboard && npm test",
+    "setup": "node scripts/setup.js",
+    "status": "cd dashboard && node dist/cli.js status",
+    "configure": "node scripts/configure-claude.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "",
+  "license": "MIT"
+}

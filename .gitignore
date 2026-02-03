@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE / Editor
+.cursor/
+
+# Jacques runtime data
+.jacques/handoffs/
+.jacques/sessions/
+.jacques/context/
+.jacques/plans/
+.jacques/index.json
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Environment
+.env
+.env.*
+
+# Root-level images (canonical copies live in assets/)
+/*.png
+pixel.py
+
+# Development notes / planning docs
+FILTER_UI_GUIDE.md
+IMPLEMENTATION_SUMMARY.md
+NEW_FILTERS_SUMMARY.md
+TUI_LIBRARIES_COMPARISON.md
+jaques-plan.md

@@ -1,0 +1,442 @@
+/**
+ * @jacques/core
+ *
+ * Core business logic for Jacques - shared between CLI dashboard and GUI.
+ *
+ * Modules:
+ * - types: Shared type definitions
+ * - client: WebSocket client for real-time updates
+ * - session: JSONL parsing, filtering, transformation
+ * - archive: Cross-project search and archiving
+ * - context: Project knowledge management
+ * - sources: External source adapters (Obsidian, etc.)
+ * - storage: File I/O for saved contexts
+ * - utils: Settings and configuration utilities
+ */
+
+// Types - core session/websocket types
+export type {
+  AutoCompactStatus,
+  TerminalIdentity,
+  ContextMetrics,
+  ModelInfo,
+  WorkspaceInfo,
+  SessionStatus,
+  SessionSource,
+  Session,
+  ServerMessage,
+  ClientMessage,
+  InitialStateMessage,
+  SessionUpdateMessage,
+  SessionRemovedMessage,
+  FocusChangedMessage,
+  ServerStatusMessage,
+  AutoCompactToggledMessage,
+  HandoffReadyMessage,
+  SelectSessionRequest,
+  TriggerActionRequest,
+  ToggleAutoCompactRequest,
+} from "./types.js";
+
+// Client
+export { JacquesClient } from "./client/index.js";
+export type { JacquesClientEvents } from "./client/index.js";
+
+// Session module
+export {
+  // Detector
+  detectCurrentSession,
+  listProjectSessions,
+  getProjectDirPath,
+  encodeProjectPath,
+  findSessionById,
+  listSubagentFiles,
+  // Parser
+  parseJSONL,
+  categorizeEntry,
+  getEntryStatistics,
+  // Transformer
+  transformToSavedContext,
+  getSessionPreview,
+  // Filters
+  FilterType,
+  FILTER_CONFIGS,
+  applyFilter,
+  // Token estimator
+  estimateTokensForFilters,
+  countEntryTokens,
+} from "./session/index.js";
+
+// Re-export formatTokenCount from session explicitly
+export { formatTokenCount as formatSessionTokenCount } from "./session/index.js";
+
+export type {
+  SessionFile,
+  SubagentFile,
+  DetectorOptions,
+  ParsedEntry,
+  ParsedEntryType,
+  ParsedContent,
+  RawEntry,
+  RawAssistantEntry,
+  RawProgressEntry,
+  RawQueueOperationEntry,
+  RawSystemEntry,
+  RawSummaryEntry,
+  ContentBlock,
+  SavedContext,
+  SessionInfo,
+  SessionStatistics,
+  DisplayMessage,
+  MessageContent,
+  MessageMetadata,
+  TransformOptions,
+  FilterConfig,
+  TokenEstimate,
+  FilterTokenEstimates,
+} from "./session/index.js";
+
+// Archive module
+export {
+  // Types
+  getDefaultSearchIndex,
+  // Manifest extractor
+  extractManifest,
+  extractManifestFromEntries,
+  detectPlans,
+  getPlansDirectory,
+  readPlanContent,
+  // Plan extractor
+  PLAN_TRIGGER_PATTERNS,
+  extractPlanTitle,
+  // Search indexer
+  tokenize,
+  extractPathKeywords,
+  extractKeywordsWithFields,
+  searchIndex,
+  getIndexStats,
+  // Archive store
+  getGlobalArchivePath,
+  getGlobalIndexPath,
+  getManifestPath,
+  getConversationPath,
+  getPlanPath,
+  getLocalArchivePath,
+  getLocalIndexPath,
+  ensureGlobalArchive,
+  ensureLocalArchive,
+  readGlobalIndex,
+  writeGlobalIndex,
+  readLocalIndex,
+  writeLocalIndex,
+  saveManifest,
+  readManifest,
+  listManifests,
+  listAllManifests,
+  listManifestsByProject,
+  saveConversation,
+  readConversation,
+  archivePlan,
+  isPlanArchived,
+  readArchiveSettings,
+  writeArchiveSettings,
+  archiveConversation,
+  searchConversations,
+  getArchiveStats,
+  // Bulk archive
+  decodeProjectPath,
+  listAllProjects,
+  listAllSessions,
+  isSessionArchived,
+  archiveSessionFile,
+  initializeArchive,
+  // Subagent store
+  archiveSubagent,
+  readSubagent,
+  listSubagentsForSession,
+  isSubagentArchived,
+  listAllSubagentIds,
+  createSubagentReference,
+  deleteSubagent,
+  getSubagentArchiveStats,
+} from "./archive/index.js";
+
+// Explicitly export with aliases for conflicting names
+export {
+  addToIndex as addToArchiveIndex,
+  removeFromIndex as removeFromArchiveIndex,
+  getDefaultArchiveSettings as getArchiveDefaultSettings,
+} from "./archive/index.js";
+
+export type {
+  ConversationManifest,
+  PlanReference,
+  SubagentSummary,
+  SearchIndex,
+  IndexReference,
+  ProjectInfo,
+  SearchInput,
+  SearchOutput,
+  SearchResult,
+  ArchiveSettings,
+  ArchiveProgress,
+  ArchiveInitResult,
+  SessionFileInfo,
+  ArchivedSubagent,
+  SubagentReference,
+  SubagentTokenStats,
+} from "./archive/index.js";
+
+// Context module
+export {
+  // Types
+  getDefaultIndex,
+  migrateIndex,
+  // Indexer
+  getIndexPath,
+  readProjectIndex,
+  writeProjectIndex,
+  addContextToIndex,
+  removeContextFromIndex,
+  addSessionToIndex,
+  removeSessionFromIndex,
+  addPlanToIndex,
+  removePlanFromIndex,
+  fileExistsInIndex,
+  readContextIndex,
+  writeContextIndex,
+  // Manager
+  generateContextId,
+  sanitizeFilename,
+  getContextDir,
+  addContext,
+  removeContext,
+  hasContextFiles,
+  estimateTokensFromSize,
+  countTokens,
+  countFileTokens,
+  extractTags,
+} from "./context/index.js";
+
+// Explicitly export with aliases for conflicting names
+export {
+  addToIndex as addToContextIndex,
+  removeFromIndex as removeFromContextIndex,
+  formatFileSize as formatContextFileSize,
+  formatTokenCount as formatContextTokenCount,
+} from "./context/index.js";
+
+export type {
+  ProjectIndex,
+  ContextFile,
+  SessionEntry,
+  PlanEntry,
+  ContextSource,
+  AddContextOptions,
+  ContextIndex,
+} from "./context/index.js";
+
+// Sources module
+export {
+  // Config - Obsidian
+  getDefaultConfig,
+  saveJacquesConfig,
+  isObsidianConfigured,
+  configureObsidian,
+  getObsidianVaultPath,
+  // Config - Google Docs
+  isGoogleDocsConfigured,
+  getGoogleDocsConfig,
+  configureGoogleDocs,
+  updateGoogleDocsTokens,
+  disconnectGoogleDocs,
+  // Config - Notion
+  isNotionConfigured,
+  getNotionConfig,
+  configureNotion,
+  disconnectNotion,
+  // Obsidian adapter
+  detectObsidianVaults,
+  validateVaultPath,
+  listVaultFiles,
+  getVaultName,
+  buildFileTree,
+  flattenTree,
+  getVaultFileTree,
+  // Google Docs adapter
+  refreshGoogleToken,
+  listGoogleDriveFiles,
+  listAllGoogleDriveFiles,
+  exportGoogleDoc,
+  getGoogleDriveFile,
+  buildGoogleDocsTree,
+  flattenGoogleDocsTree,
+  getGoogleDocsFileTree,
+  // Notion adapter
+  searchNotionPages,
+  listAllNotionPages,
+  getNotionPageContent,
+  buildNotionTree,
+  flattenNotionTree,
+  getNotionPageTree,
+} from "./sources/index.js";
+
+// Explicitly export with alias for conflicting name
+export { getJacquesConfig as getSourcesJacquesConfig } from "./sources/index.js";
+
+export type {
+  JacquesConfig as SourcesJacquesConfig,
+  ObsidianSourceConfig,
+  ObsidianVault,
+  ObsidianFile,
+  FileTreeNode,
+  FlatTreeItem,
+  // New types
+  OAuthTokens,
+  GoogleDocsSourceConfig,
+  NotionSourceConfig,
+  GoogleDriveFile,
+  NotionPage,
+} from "./sources/index.js";
+
+// Storage module
+export {
+  saveContext,
+  saveToArchive,
+  generateFilename,
+  listSavedContexts,
+  ensureContextDirectory,
+} from "./storage/index.js";
+
+// Explicitly export with alias for conflicting name
+export { formatFileSize as formatStorageFileSize } from "./storage/index.js";
+
+export type {
+  WriteOptions,
+  WriteResult,
+  SaveToArchiveOptions,
+  SaveToArchiveResult,
+} from "./storage/index.js";
+
+// Utils module
+export {
+  getClaudeSettings,
+  setClaudeSettings,
+  getAutoCompactEnabled,
+  setAutoCompact,
+  toggleAutoCompact,
+  getAutoCompactThreshold,
+  setJacquesConfig,
+  getArchiveSettings,
+  setArchiveSettings,
+  getArchiveFilter,
+  setArchiveFilter,
+  getAutoArchiveEnabled,
+  setAutoArchiveEnabled,
+  toggleAutoArchive,
+  getArchivePath,
+  // Claude token management
+  validateToken,
+  verifyToken,
+  saveClaudeToken,
+  getClaudeToken,
+  isClaudeConnected,
+  maskToken,
+  disconnectClaude,
+} from "./utils/index.js";
+
+// Explicitly export with aliases for conflicting names
+export {
+  getDefaultArchiveSettings as getUtilsDefaultArchiveSettings,
+  getJacquesConfig as getUtilsJacquesConfig,
+} from "./utils/index.js";
+
+export type {
+  ClaudeSettings,
+  ArchiveFilterType,
+  ArchiveSettings as UtilsArchiveSettings,
+  JacquesConfig as UtilsJacquesConfig,
+} from "./utils/index.js";
+
+// Handoff module
+export {
+  // Catalog operations
+  getHandoffsDir,
+  ensureHandoffsDir,
+  parseTimestampFromFilename,
+  generateHandoffFilename,
+  formatHandoffDate,
+  estimateTokens as estimateHandoffTokens,
+  formatTokenEstimate,
+  listHandoffs,
+  getHandoffContent,
+  hasHandoffs,
+  getLatestHandoff,
+  // Prompts
+  HANDOFF_INVOCATION,
+  getHandoffPrompt,
+  getHandoffPromptDisplay,
+  // Generator
+  extractHandoffData,
+  formatHandoffMarkdown,
+  generateHandoffFromTranscript,
+  generateHandoffFromEntries,
+  // LLM Generator
+  generateHandoffWithLLM,
+  isSkillInstalled,
+  getSkillPath,
+  ClaudeCodeError,
+} from "./handoff/index.js";
+
+export type {
+  HandoffEntry,
+  HandoffCatalog,
+  HandoffData,
+  HandoffResult,
+  LLMHandoffResult,
+  LLMHandoffOptions,
+  LLMStreamCallbacks,
+} from "./handoff/index.js";
+
+// Logging module
+export { ClaudeOperationLogger } from "./logging/index.js";
+
+export type { ClaudeOperation } from "./logging/index.js";
+
+// Cache module (hybrid architecture - lightweight index, read JSONL directly)
+export {
+  // Types
+  getDefaultSessionIndex,
+  decodeProjectPath as decodeCacheProjectPath,
+  // Path helpers
+  getCacheDir,
+  getIndexPath as getCacheIndexPath,
+  ensureCacheDir,
+  // Index operations
+  readSessionIndex,
+  writeSessionIndex,
+  extractSessionMetadata,
+  listAllProjects as listCacheProjects,
+  buildSessionIndex,
+  getSessionIndex,
+  getSessionEntry,
+  getSessionsByProject,
+  getIndexStats as getCacheIndexStats,
+  invalidateIndex,
+} from "./cache/index.js";
+
+export type {
+  SessionEntry as CacheSessionEntry,
+  SessionIndex as CacheSessionIndex,
+} from "./cache/index.js";
+
+// Project module (dashboard aggregation)
+export {
+  getDefaultStatistics,
+  aggregateProjectStatistics,
+  buildProjectSessionList,
+  getProjectPlans,
+  readLocalPlanContent,
+} from "./project/index.js";
+
+export type { ProjectStatistics, ProjectSessionItem } from "./project/index.js";
