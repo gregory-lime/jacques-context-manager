@@ -23,12 +23,15 @@ import type {
   HandoffContextMessage,
   HandoffContextErrorMessage,
   GetHandoffContextRequest,
+  FocusTerminalRequest,
+  FocusTerminalResultMessage,
 } from './types.js';
 import { WebSocket } from 'ws';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { getCompactContextForSkill } from '@jacques/core/handoff';
 import { ClaudeOperationLogger } from '@jacques/core';
+import { activateTerminal } from './terminal-activator.js';
 
 export interface EmbeddedServerOptions {
   /** Suppress console output */
@@ -130,7 +133,7 @@ export async function startEmbeddedServer(
     switch (message.type) {
       case 'select_session':
         if (registry.setFocusedSession(message.session_id)) {
-          broadcastService.broadcastFocusChange();
+          broadcastService.forceBroadcastFocusChange();
         }
         break;
 
@@ -144,6 +147,10 @@ export async function startEmbeddedServer(
 
       case 'get_handoff_context':
         handleGetHandoffContext(ws, message as GetHandoffContextRequest);
+        break;
+
+      case 'focus_terminal':
+        handleFocusTerminal(ws, message as FocusTerminalRequest);
         break;
 
       default:
@@ -279,6 +286,67 @@ export async function startEmbeddedServer(
     }
   }
 
+  /**
+   * Handle focus terminal request
+   * Looks up the session's terminal_key and activates the terminal window
+   */
+  async function handleFocusTerminal(
+    ws: WebSocket,
+    request: FocusTerminalRequest
+  ): Promise<void> {
+    const session = registry.getSession(request.session_id);
+
+    if (!session) {
+      const response: FocusTerminalResultMessage = {
+        type: 'focus_terminal_result',
+        session_id: request.session_id,
+        success: false,
+        method: 'unsupported',
+        error: `Session not found: ${request.session_id}`,
+      };
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(response));
+      }
+      return;
+    }
+
+    logger.log(`Focusing terminal for session ${request.session_id} (key: ${session.terminal_key})`);
+
+    if (!session.terminal_key) {
+      const response: FocusTerminalResultMessage = {
+        type: 'focus_terminal_result',
+        session_id: request.session_id,
+        success: false,
+        method: 'unsupported',
+        error: 'Session has no terminal key',
+      };
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(response));
+      }
+      return;
+    }
+
+    const result = await activateTerminal(session.terminal_key);
+
+    const response: FocusTerminalResultMessage = {
+      type: 'focus_terminal_result',
+      session_id: request.session_id,
+      success: result.success,
+      method: result.method,
+      error: result.error,
+    };
+
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(response));
+    }
+
+    if (result.success) {
+      logger.log(`Terminal focused via ${result.method} for session ${request.session_id}`);
+    } else {
+      logger.log(`Terminal focus failed (${result.method}): ${result.error}`);
+    }
+  }
+
   // Start log interception for broadcasting to GUI
   startLogInterception();
 
@@ -321,7 +389,7 @@ export async function startEmbeddedServer(
             if (session && session.session_id !== registry.getFocusedSessionId()) {
               logger.log(`Terminal focus detected: ${terminalKey} -> ${session.session_id}`);
               registry.setFocusedSession(session.session_id);
-              broadcastService.broadcastFocusChange();
+              broadcastService.forceBroadcastFocusChange();
             }
           }
         },
@@ -338,7 +406,13 @@ export async function startEmbeddedServer(
       logger.log('');
     }
   } catch (err) {
-    logger.error(`Failed to start: ${err}`);
+    const nodeErr = err as NodeJS.ErrnoException;
+    if (nodeErr.code === 'EADDRINUSE') {
+      logger.error(`Port already in use. Another Jacques server may be running.`);
+      logger.error(`Run: npm run stop:server`);
+    } else {
+      logger.error(`Failed to start: ${err}`);
+    }
     throw err;
   }
 

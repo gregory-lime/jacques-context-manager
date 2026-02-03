@@ -124,14 +124,23 @@ export interface HandoffReadyMessage {
   path: string;
 }
 
-export type ServerMessage = 
-  | InitialStateMessage 
-  | SessionUpdateMessage 
-  | SessionRemovedMessage 
+export interface FocusTerminalResultMessage {
+  type: 'focus_terminal_result';
+  session_id: string;
+  success: boolean;
+  method: string;
+  error?: string;
+}
+
+export type ServerMessage =
+  | InitialStateMessage
+  | SessionUpdateMessage
+  | SessionRemovedMessage
   | FocusChangedMessage
   | ServerStatusMessage
   | AutoCompactToggledMessage
-  | HandoffReadyMessage;
+  | HandoffReadyMessage
+  | FocusTerminalResultMessage;
 
 export interface SelectSessionRequest {
   type: 'select_session';
@@ -150,7 +159,13 @@ export interface ToggleAutoCompactRequest {
   session_id?: string;
 }
 
-export type ClientMessage = 
-  | SelectSessionRequest 
+export interface FocusTerminalRequest {
+  type: 'focus_terminal';
+  session_id: string;
+}
+
+export type ClientMessage =
+  | SelectSessionRequest
   | TriggerActionRequest
-  | ToggleAutoCompactRequest;
+  | ToggleAutoCompactRequest
+  | FocusTerminalRequest;

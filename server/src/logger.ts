@@ -20,6 +20,9 @@ const originalConsole = {
 // Log listeners
 const listeners: Set<LogCallback> = new Set();
 
+// Re-entrancy guard: prevents infinite loop when broadcast() logs via console.log
+let isBroadcasting = false;
+
 // Max log history for new clients
 const LOG_HISTORY_SIZE = 100;
 const logHistory: ServerLogMessage[] = [];
@@ -61,19 +64,27 @@ function parseSource(message: string): string {
  * Broadcast log to all listeners
  */
 function broadcastLog(logMessage: ServerLogMessage): void {
+  // Prevent infinite recursion: broadcast() → console.log → broadcastLog → broadcast()
+  if (isBroadcasting) return;
+
   // Add to history
   logHistory.push(logMessage);
   if (logHistory.length > LOG_HISTORY_SIZE) {
     logHistory.shift();
   }
 
-  // Notify listeners
-  for (const listener of listeners) {
-    try {
-      listener(logMessage);
-    } catch {
-      // Ignore listener errors
+  // Notify listeners (with re-entrancy guard)
+  isBroadcasting = true;
+  try {
+    for (const listener of listeners) {
+      try {
+        listener(logMessage);
+      } catch {
+        // Ignore listener errors
+      }
     }
+  } finally {
+    isBroadcasting = false;
   }
 }
 

@@ -76,10 +76,14 @@ async function startDashboard(): Promise<void> {
   try {
     embeddedServer = await startEmbeddedServer({ silent: true });
   } catch (err) {
-    // Server might already be running - that's OK, we'll connect to it
     const error = err as NodeJS.ErrnoException;
-    if (error.code !== 'EADDRINUSE') {
-      // Don't log here - we'll be in alternate screen soon
+    if (error.code === 'EADDRINUSE') {
+      // Server already running — connect to it (this is normal)
+      embeddedServer = null;
+    } else {
+      console.error(`Warning: Could not start embedded server: ${error.message}`);
+      // Continue — will try to connect to existing server
+      embeddedServer = null;
     }
   }
 

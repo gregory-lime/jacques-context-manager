@@ -2,7 +2,7 @@ import type { Session, SessionBadges } from '../types';
 import { colors } from '../styles/theme';
 import { ContextMeter } from './ContextMeter';
 import { PlanIcon, AgentIcon } from './Icons';
-import { Plug, Globe, Zap, GitBranch, Play } from 'lucide-react';
+import { Plug, Globe, Zap, GitBranch, Play, Search } from 'lucide-react';
 
 interface SessionCardProps {
   session: Session;
@@ -11,6 +11,7 @@ interface SessionCardProps {
   onClick?: () => void;
   onPlanClick?: () => void;
   onAgentClick?: () => void;
+  onFocusTerminal?: () => void;
 }
 
 const PLAN_TITLE_PATTERNS = [
@@ -58,6 +59,7 @@ export function SessionCard({
   onClick,
   onPlanClick,
   onAgentClick,
+  onFocusTerminal,
 }: SessionCardProps) {
   const status = session.status;
   const statusCfg = STATUS_CONFIG[status] || STATUS_CONFIG.idle;
@@ -86,6 +88,11 @@ export function SessionCard({
   const handleAgentClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onAgentClick?.();
+  };
+
+  const handleFocusTerminal = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onFocusTerminal?.();
   };
 
   const focusedStyles: React.CSSProperties = isFocused ? {
@@ -157,6 +164,18 @@ export function SessionCard({
       {/* ── Footer Row ── */}
       <div style={styles.footer}>
         <div style={styles.footerLeft}>
+          <button
+            style={{
+              ...styles.focusButton,
+              ...(isFocused ? styles.focusButtonActive : {}),
+            }}
+            className="jacques-focus-btn"
+            onClick={handleFocusTerminal}
+            type="button"
+            title={isFocused ? 'Focused — click to bring terminal to front' : 'Click to focus this terminal'}
+          >
+            <Search size={12} />
+          </button>
           {hasPlan && (
             <button
               style={styles.indicatorButton}
@@ -315,6 +334,26 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.textSecondary,
     fontWeight: 500,
     fontVariantNumeric: 'tabular-nums',
+  },
+  focusButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '24px',
+    height: '24px',
+    border: 'none',
+    background: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    color: colors.textMuted,
+    opacity: 0.4,
+    transition: 'all 150ms ease',
+    padding: 0,
+  },
+  focusButtonActive: {
+    color: colors.accent,
+    opacity: 1,
+    backgroundColor: 'rgba(230, 126, 82, 0.12)',
   },
   footerCenter: {
     display: 'flex',

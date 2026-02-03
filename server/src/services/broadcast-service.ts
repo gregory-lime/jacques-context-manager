@@ -38,6 +38,7 @@ export class BroadcastService {
   private wsServer: JacquesWebSocketServer;
   private registry: SessionRegistry;
   private logger: Logger;
+  private lastBroadcastedFocusId: string | null | undefined = undefined;
 
   constructor(config: BroadcastServiceConfig) {
     this.wsServer = config.wsServer;
@@ -62,7 +63,7 @@ export class BroadcastService {
    */
   broadcastSessionRemovedWithFocus(sessionId: string): void {
     this.wsServer.broadcastSessionRemoved(sessionId);
-    this.broadcastFocusChange();
+    this.forceBroadcastFocusChange();
   }
 
   /**
@@ -77,10 +78,22 @@ export class BroadcastService {
   }
 
   /**
-   * Broadcast only the focus change
+   * Broadcast only the focus change (skips if focus hasn't changed)
    */
   broadcastFocusChange(): void {
     const focusedId = this.registry.getFocusedSessionId();
+    if (focusedId === this.lastBroadcastedFocusId) return;
+    this.lastBroadcastedFocusId = focusedId;
+    const focusedSession = focusedId ? this.registry.getSession(focusedId) ?? null : null;
+    this.wsServer.broadcastFocusChange(focusedId, focusedSession);
+  }
+
+  /**
+   * Force broadcast focus change (used when focus must be re-sent, e.g. session removal)
+   */
+  forceBroadcastFocusChange(): void {
+    const focusedId = this.registry.getFocusedSessionId();
+    this.lastBroadcastedFocusId = focusedId;
     const focusedSession = focusedId ? this.registry.getSession(focusedId) ?? null : null;
     this.wsServer.broadcastFocusChange(focusedId, focusedSession);
   }

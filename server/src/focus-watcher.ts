@@ -138,13 +138,22 @@ export function startFocusWatcher(
 
   let lastTerminalKey: string | null = null;
   let isRunning = true;
+  // Poll slower when no terminal is focused (non-terminal app in foreground)
+  const idleMultiplier = 3;
 
   const poll = async () => {
     if (!isRunning) return;
 
+    let nextDelay = pollIntervalMs;
+
     try {
       const focusInfo = await getTerminalFocusInfo();
       const terminalKey = focusInfo ? buildTerminalKeyFromFocus(focusInfo) : null;
+
+      // Poll slower when no terminal is focused
+      if (!focusInfo) {
+        nextDelay = pollIntervalMs * idleMultiplier;
+      }
 
       // Only notify on change
       if (terminalKey !== lastTerminalKey) {
@@ -157,10 +166,11 @@ export function startFocusWatcher(
       }
     } catch (err) {
       error(`[FocusWatcher] Poll error: ${err}`);
+      nextDelay = pollIntervalMs * idleMultiplier;
     }
 
     if (isRunning) {
-      setTimeout(poll, pollIntervalMs);
+      setTimeout(poll, nextDelay);
     }
   };
 

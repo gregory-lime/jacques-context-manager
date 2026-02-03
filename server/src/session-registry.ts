@@ -433,7 +433,7 @@ export class SessionRegistry {
       }
 
       // For iTerm: match by UUID portion (handles w1t0p0:UUID vs UUID mismatch)
-      if (searchUUID && session.terminal_key.startsWith('ITERM:')) {
+      if (searchUUID && session.terminal_key?.startsWith('ITERM:')) {
         const sessionUUID = extractITermUUID(session.terminal_key);
         if (sessionUUID === searchUUID) {
           return session;

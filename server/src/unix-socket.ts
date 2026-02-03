@@ -5,7 +5,7 @@
  * Events are newline-delimited JSON.
  */
 
-import { createServer, Server, Socket } from 'net';
+import { createServer, connect, Server, Socket } from 'net';
 import { unlinkSync, existsSync } from 'fs';
 import type { HookEvent } from './types.js';
 import type { Logger } from './logging/logger-factory.js';
@@ -54,19 +54,38 @@ export class UnixSocketServer {
   private get warn() { return this.logger.warn.bind(this.logger); }
 
   /**
+   * Check if a Unix socket has an active listener
+   */
+  private isSocketAlive(path: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const client = connect({ path }, () => {
+        client.end();
+        resolve(true);
+      });
+      client.on('error', () => resolve(false));
+      const timeout = setTimeout(() => { client.destroy(); resolve(false); }, 1000);
+      client.on('close', () => clearTimeout(timeout));
+    });
+  }
+
+  /**
    * Start listening on the Unix socket
    */
-  start(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // Clean up old socket if it exists
-      if (existsSync(this.socketPath)) {
-        try {
-          unlinkSync(this.socketPath);
-          this.log(`[UnixSocket] Removed stale socket: ${this.socketPath}`);
-        } catch (err) {
-          this.error(`[UnixSocket] Failed to remove stale socket: ${err}`);
-        }
+  async start(): Promise<void> {
+    // Clean up old socket if it exists
+    if (existsSync(this.socketPath)) {
+      if (await this.isSocketAlive(this.socketPath)) {
+        throw new Error(`Another Jacques server is listening on ${this.socketPath}`);
       }
+      try {
+        unlinkSync(this.socketPath);
+        this.log(`[UnixSocket] Removed stale socket: ${this.socketPath}`);
+      } catch (err) {
+        this.error(`[UnixSocket] Failed to remove stale socket: ${err}`);
+      }
+    }
+
+    return new Promise((resolve, reject) => {
 
       this.server = createServer((socket: Socket) => {
         this.handleConnection(socket);

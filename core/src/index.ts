@@ -36,6 +36,8 @@ export type {
   SelectSessionRequest,
   TriggerActionRequest,
   ToggleAutoCompactRequest,
+  FocusTerminalRequest,
+  FocusTerminalResultMessage,
 } from "./types.js";
 
 // Client

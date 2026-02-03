@@ -68,6 +68,7 @@ interface DashboardProps {
   saveScrollOffset?: number;
   // Scroll state for Active Sessions
   sessionsScrollOffset?: number;
+  selectedSessionIndex?: number;
   // LoadContext flow props
   loadContextIndex?: number;
   sourceItems?: SourceItem[];
@@ -527,6 +528,7 @@ export function Dashboard({
   saveSuccess,
   saveScrollOffset = 0,
   sessionsScrollOffset = 0,
+  selectedSessionIndex = 0,
   // LoadContext props
   loadContextIndex = 0,
   sourceItems = [],
@@ -837,6 +839,7 @@ export function Dashboard({
           focusedSessionId={focusedSessionId}
           terminalWidth={terminalWidth}
           scrollOffset={sessionsScrollOffset}
+          selectedIndex={selectedSessionIndex}
         />
       </Box>
     );
@@ -1105,6 +1108,7 @@ interface ActiveSessionsViewProps {
   focusedSessionId: string | null;
   terminalWidth: number;
   scrollOffset?: number;
+  selectedIndex?: number;
 }
 
 function ActiveSessionsView({
@@ -1112,21 +1116,33 @@ function ActiveSessionsView({
   focusedSessionId,
   terminalWidth,
   scrollOffset = 0,
+  selectedIndex = 0,
 }: ActiveSessionsViewProps): React.ReactElement {
   const useHorizontalLayout = terminalWidth >= HORIZONTAL_LAYOUT_MIN_WIDTH;
   const showVersion = terminalWidth >= 65;
 
+  // Sort sessions: focused first, then by registration time
+  const sortedSessions = [...sessions].sort((a, b) => {
+    if (a.session_id === focusedSessionId) return -1;
+    if (b.session_id === focusedSessionId) return 1;
+    return a.registered_at - b.registered_at;
+  });
+
   // Build all session items first
   const allSessionItems: React.ReactNode[] = [];
 
-  if (sessions.length === 0) {
+  if (sortedSessions.length === 0) {
     allSessionItems.push(<Text color={MUTED_TEXT}>No active sessions</Text>);
   } else {
-    sessions.forEach((session) => {
+    sortedSessions.forEach((session, index) => {
+      const isSelected = index === selectedIndex;
+      const isFocused = session.session_id === focusedSessionId;
+      const cursor = isSelected ? "▸ " : "  ";
       allSessionItems.push(
         <Text>
-          {session.session_id === focusedSessionId ? "● " : "○ "}
-          <Text bold={session.session_id === focusedSessionId}>
+          {cursor}
+          {isFocused && <Text color={ACCENT_COLOR} bold>[FOCUS] </Text>}
+          <Text bold={isFocused} inverse={isSelected}>
             {session.project || "unknown"}
           </Text>
           <Text color={MUTED_TEXT}>
@@ -1212,10 +1228,10 @@ function ActiveSessionsView({
   // Footer with scroll down indicator overlaid
   if (canScrollDown) {
     contentLines.push(
-      <Text color={MUTED_TEXT}>▼ more below • [Esc] back</Text>,
+      <Text color={MUTED_TEXT}>▼ more below • [Enter] focus • [Esc] back</Text>,
     );
   } else {
-    contentLines.push(<Text color={MUTED_TEXT}>Press [Esc] to go back</Text>);
+    contentLines.push(<Text color={MUTED_TEXT}>[Enter] focus terminal • [Esc] back</Text>);
   }
 
   return useHorizontalLayout ? (

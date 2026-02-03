@@ -21,7 +21,7 @@
     "build:dashboard": "cd dashboard && npm run build",
     "build:gui": "cd gui && npm run build",
     "start:server": "cd server && npm start",
-    "stop:server": "if [ -f ~/.jacques/server.pid ]; then kill $(cat ~/.jacques/server.pid) 2>/dev/null; rm -f ~/.jacques/server.pid; echo 'Server stopped'; else lsof -ti :4243 | xargs kill 2>/dev/null || echo 'No server running'; fi",
+    "stop:server": "bash scripts/stop-server.sh",
     "restart:server": "npm run stop:server && sleep 1 && npm run start:server",
     "start:dashboard": "cd dashboard && node dist/cli.js",
     "start:gui": "cd gui && npm run dev",

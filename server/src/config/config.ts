@@ -34,7 +34,7 @@ export const ServerConfig = {
   staleSessionCleanupMinutes: 60,
 
   /** Focus watcher polling interval in milliseconds */
-  focusWatcherPollMs: 500,
+  focusWatcherPollMs: 2000,
 
   /** Cleanup interval in minutes */
   cleanupIntervalMinutes: 5,

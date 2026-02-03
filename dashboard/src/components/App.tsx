@@ -132,7 +132,7 @@ function copyToClipboard(text: string): Promise<void> {
 }
 
 export function App(): React.ReactElement {
-  const { sessions, focusedSessionId, connected } = useJacquesClient();
+  const { sessions, focusedSessionId, connected, focusTerminal, focusTerminalResult } = useJacquesClient();
   const { exit } = useApp();
   const { isRawModeSupported } = useStdin();
 
@@ -159,6 +159,7 @@ export function App(): React.ReactElement {
 
   // Scroll state for Active Sessions view
   const [sessionsScrollOffset, setSessionsScrollOffset] = useState<number>(0);
+  const [selectedSessionIndex, setSelectedSessionIndex] = useState<number>(0);
 
   // LoadContext flow state
   const [loadContextIndex, setLoadContextIndex] = useState<number>(0);
@@ -298,6 +299,19 @@ export function App(): React.ReactElement {
     setNotification(prefix + message);
     setTimeout(() => setNotification(null), duration);
   }, []);
+
+  // Handle focus terminal result notifications
+  useEffect(() => {
+    if (focusTerminalResult) {
+      if (focusTerminalResult.success) {
+        showNotification("Terminal focused");
+      } else if (focusTerminalResult.method === "unsupported") {
+        showNotification("Not supported for this terminal");
+      } else {
+        showNotification(`Focus failed: ${focusTerminalResult.error || "unknown error"}`);
+      }
+    }
+  }, [focusTerminalResult, showNotification]);
 
   // Handle menu selection
   const handleMenuSelect = useCallback(
@@ -568,7 +582,8 @@ export function App(): React.ReactElement {
     setSessionFile(null);
     setParsedEntries([]);
     setSelectedFilterType(FilterType.WITHOUT_TOOLS);
-    setSessionsScrollOffset(0); // Reset scroll position
+    setSessionsScrollOffset(0);
+    setSelectedSessionIndex(0);
     // Reset LoadContext state
     setLoadContextIndex(0);
     setSourceItems([]);
@@ -1253,20 +1268,49 @@ export function App(): React.ReactElement {
           }
         }
       } else if (currentView === "sessions") {
-        // Active Sessions view - handle scrolling
+        // Active Sessions view - handle navigation and terminal focus
         if (key.escape) {
           returnToMain();
-          setSessionsScrollOffset(0); // Reset scroll
+          setSessionsScrollOffset(0);
+          setSelectedSessionIndex(0);
           return;
         }
 
         if (key.upArrow) {
-          setSessionsScrollOffset((prev) => Math.max(0, prev - 1));
+          setSelectedSessionIndex((prev) => {
+            const newIndex = Math.max(0, prev - 1);
+            // Each session takes 3 lines (name, metrics, spacer)
+            const itemLine = newIndex * 3;
+            // Scroll up if needed (7 visible lines in content area)
+            if (itemLine < sessionsScrollOffset) {
+              setSessionsScrollOffset(itemLine);
+            }
+            return newIndex;
+          });
           return;
         }
 
         if (key.downArrow) {
-          setSessionsScrollOffset((prev) => prev + 1); // Will be clamped in view
+          setSelectedSessionIndex((prev) => {
+            const maxIndex = Math.max(0, sessions.length - 1);
+            const newIndex = Math.min(maxIndex, prev + 1);
+            // Each session takes 3 lines (name, metrics, spacer)
+            const itemLine = newIndex * 3;
+            const maxVisibleItems = 7; // FIXED_CONTENT_HEIGHT(10) - HEADER(2) - FOOTER(1)
+            if (itemLine >= sessionsScrollOffset + maxVisibleItems) {
+              setSessionsScrollOffset(itemLine - maxVisibleItems + 3);
+            }
+            return newIndex;
+          });
+          return;
+        }
+
+        if (key.return && sessions.length > 0) {
+          const selectedSession = sessions[selectedSessionIndex];
+          if (selectedSession) {
+            showNotification("Focusing terminal...");
+            focusTerminal(selectedSession.session_id);
+          }
           return;
         }
       } else if (currentView === "load") {
@@ -1991,6 +2035,7 @@ export function App(): React.ReactElement {
         saveSuccess={saveSuccess}
         saveScrollOffset={saveScrollOffset}
         sessionsScrollOffset={sessionsScrollOffset}
+        selectedSessionIndex={selectedSessionIndex}
         // LoadContext props
         loadContextIndex={loadContextIndex}
         sourceItems={sourceItems}

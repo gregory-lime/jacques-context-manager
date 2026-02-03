@@ -10,13 +10,21 @@ import { colors } from '../styles/theme';
 import type { Session } from '../types';
 
 export function Dashboard() {
-  const { sessions, focusedSessionId, connected } = useJacquesClient();
+  const { sessions, focusedSessionId, connected, focusTerminal } = useJacquesClient();
   const { selectedProject, filterSessions } = useProjectScope();
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
 
   const filteredSessions = useMemo(
-    () => filterSessions(sessions),
-    [sessions, filterSessions]
+    () => {
+      const filtered = filterSessions(sessions);
+      // Pin focused session first, rest by registration time (stable order)
+      return [...filtered].sort((a, b) => {
+        if (a.session_id === focusedSessionId) return -1;
+        if (b.session_id === focusedSessionId) return 1;
+        return a.registered_at - b.registered_at;
+      });
+    },
+    [sessions, filterSessions, focusedSessionId]
   );
 
   const sessionIds = useMemo(
@@ -98,6 +106,7 @@ export function Dashboard() {
               onClick={() => handleSessionClick(session)}
               onPlanClick={() => handlePlanClick(session)}
               onAgentClick={() => handleAgentClick(session)}
+              onFocusTerminal={() => focusTerminal(session.session_id)}
             />
           ))}
         </div>

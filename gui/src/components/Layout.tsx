@@ -16,7 +16,9 @@ import { useProjectScope } from '../hooks/useProjectScope.js';
 import { getSourcesStatus } from '../api';
 import type { SourcesStatus } from '../api';
 import { MultiLogPanel } from './MultiLogPanel';
-import { SectionHeader } from './ui';
+import { SectionHeader, ToastContainer } from './ui';
+import { NotificationProvider } from '../hooks/useNotifications';
+import { useSessionBadges } from '../hooks/useSessionBadges';
 
 const navItems = [
   { path: '/', label: 'Dashboard', Icon: LayoutDashboard },
@@ -35,6 +37,10 @@ export function Layout() {
     googleDocs: { connected: false },
     notion: { connected: false },
   });
+
+  // Session badges for notification detection (plan count, auto-compact)
+  const sessionIds = sessions.map(s => s.session_id);
+  const { badges } = useSessionBadges(sessionIds);
 
   const [showLogs, setShowLogs] = useState(() => {
     const saved = localStorage.getItem('jacques-show-logs');
@@ -59,7 +65,13 @@ export function Layout() {
   }, [location.pathname]);
 
   return (
+    <NotificationProvider
+      sessions={sessions}
+      claudeOperations={claudeOperations}
+      badges={badges}
+    >
     <div style={styles.container}>
+      <ToastContainer />
       {/* Sidebar */}
       <aside style={styles.sidebar} id="sidebar">
         {/* Logo/Title */}
@@ -193,6 +205,7 @@ export function Layout() {
         )}
       </div>
     </div>
+    </NotificationProvider>
   );
 }
 

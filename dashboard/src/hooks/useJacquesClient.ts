@@ -18,6 +18,13 @@ export interface JacquesState {
   lastUpdate: number;
 }
 
+export interface FocusTerminalResult {
+  sessionId: string;
+  success: boolean;
+  method: string;
+  error?: string;
+}
+
 export interface UseJacquesClientReturn extends JacquesState {
   selectSession: (sessionId: string) => void;
   triggerAction: (
@@ -25,6 +32,8 @@ export interface UseJacquesClientReturn extends JacquesState {
     action: 'smart_compact' | 'new_session' | 'save_snapshot'
   ) => void;
   toggleAutoCompact: () => void;
+  focusTerminal: (sessionId: string) => void;
+  focusTerminalResult: FocusTerminalResult | null;
   handoffReady: boolean;
   handoffPath: string | null;
 }
@@ -37,6 +46,7 @@ export function useJacquesClient(): UseJacquesClientReturn {
   const [client, setClient] = useState<JacquesClient | null>(null);
   const [handoffReady, setHandoffReady] = useState(false);
   const [handoffPath, setHandoffPath] = useState<string | null>(null);
+  const [focusTerminalResult, setFocusTerminalResult] = useState<FocusTerminalResult | null>(null);
 
   useEffect(() => {
     const jacquesClient = new JacquesClient(SERVER_URL, { silent: true });
@@ -68,8 +78,8 @@ export function useJacquesClient(): UseJacquesClientReturn {
         } else {
           newSessions = [...prev, session];
         }
-        // Sort by last activity (most recent first)
-        return newSessions.sort((a, b) => b.last_activity - a.last_activity);
+        // Stable sort by registration time (oldest first)
+        return newSessions.sort((a, b) => a.registered_at - b.registered_at);
       });
       setLastUpdate(Date.now());
     });
@@ -96,9 +106,9 @@ export function useJacquesClient(): UseJacquesClientReturn {
           if (index >= 0) {
             const newSessions = [...prev];
             newSessions[index] = session;
-            return newSessions.sort((a, b) => b.last_activity - a.last_activity);
+            return newSessions.sort((a, b) => a.registered_at - b.registered_at);
           }
-          return [...prev, session].sort((a, b) => b.last_activity - a.last_activity);
+          return [...prev, session].sort((a, b) => a.registered_at - b.registered_at);
         });
       }
 
@@ -121,6 +131,13 @@ export function useJacquesClient(): UseJacquesClientReturn {
       })));
       setLastUpdate(Date.now());
       // Warning is handled silently in dashboard mode
+    });
+
+    jacquesClient.on('focus_terminal_result', (sessionId: string, success: boolean, method: string, error?: string) => {
+      setFocusTerminalResult({ sessionId, success, method, error });
+      setLastUpdate(Date.now());
+      // Auto-clear after 3 seconds
+      setTimeout(() => setFocusTerminalResult(null), 3000);
     });
 
     jacquesClient.on('handoff_ready', (sessionId: string, path: string) => {
@@ -159,6 +176,10 @@ export function useJacquesClient(): UseJacquesClientReturn {
     client?.toggleAutoCompact();
   }, [client]);
 
+  const focusTerminal = useCallback((sessionId: string) => {
+    client?.focusTerminal(sessionId);
+  }, [client]);
+
   return {
     sessions,
     focusedSessionId,
@@ -167,6 +188,8 @@ export function useJacquesClient(): UseJacquesClientReturn {
     selectSession,
     triggerAction,
     toggleAutoCompact,
+    focusTerminal,
+    focusTerminalResult,
     handoffReady,
     handoffPath,
   };

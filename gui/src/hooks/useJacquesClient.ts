@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Session, ClaudeOperation, ApiLog } from '../types';
+import { toastStore } from '../components/ui/ToastContainer';
 
 // WebSocket URL - the GUI connects to the Jacques server
 // In production (served from HTTP API), we're on port 4243, WebSocket is on 4242
@@ -33,6 +34,8 @@ class BrowserJacquesClient {
   public onServerLog?: (log: ServerLog) => void;
   public onClaudeOperation?: (operation: ClaudeOperation) => void;
   public onApiLog?: (log: ApiLog) => void;
+  public onHandoffReady?: (sessionId: string, path: string) => void;
+  public onFocusTerminalResult?: (sessionId: string, success: boolean, method: string, error?: string) => void;
 
   connect() {
     try {
@@ -125,6 +128,20 @@ class BrowserJacquesClient {
           timestamp: message.timestamp as number,
         });
         break;
+      case 'handoff_ready':
+        this.onHandoffReady?.(
+          message.session_id as string,
+          message.path as string,
+        );
+        break;
+      case 'focus_terminal_result':
+        this.onFocusTerminalResult?.(
+          message.session_id as string,
+          message.success as boolean,
+          message.method as string,
+          message.error as string | undefined,
+        );
+        break;
     }
   }
 
@@ -138,6 +155,10 @@ class BrowserJacquesClient {
 
   toggleAutoCompact() {
     this.send({ type: 'toggle_autocompact' });
+  }
+
+  focusTerminal(sessionId: string) {
+    this.send({ type: 'focus_terminal', session_id: sessionId });
   }
 
   private send(data: unknown) {
@@ -161,6 +182,13 @@ export interface JacquesState {
   apiLogs: ApiLog[];
 }
 
+export interface FocusTerminalResult {
+  sessionId: string;
+  success: boolean;
+  method: string;
+  error?: string;
+}
+
 export interface UseJacquesClientReturn extends JacquesState {
   selectSession: (sessionId: string) => void;
   triggerAction: (
@@ -168,6 +196,8 @@ export interface UseJacquesClientReturn extends JacquesState {
     action: 'smart_compact' | 'new_session' | 'save_snapshot'
   ) => void;
   toggleAutoCompact: () => void;
+  focusTerminal: (sessionId: string) => void;
+  focusTerminalResult: FocusTerminalResult | null;
 }
 
 const MAX_LOGS = 100;
@@ -183,6 +213,7 @@ export function useJacquesClient(): UseJacquesClientReturn {
   const [claudeOperations, setClaudeOperations] = useState<ClaudeOperation[]>([]);
   const [apiLogs, setApiLogs] = useState<ApiLog[]>([]);
   const [client, setClient] = useState<BrowserJacquesClient | null>(null);
+  const [focusTerminalResult, setFocusTerminalResult] = useState<FocusTerminalResult | null>(null);
 
   useEffect(() => {
     const jacquesClient = new BrowserJacquesClient();
@@ -214,8 +245,8 @@ export function useJacquesClient(): UseJacquesClientReturn {
         } else {
           newSessions = [...prev, session];
         }
-        // Sort by last activity (most recent first)
-        return newSessions.sort((a, b) => b.last_activity - a.last_activity);
+        // Stable sort by registration time (oldest first)
+        return newSessions.sort((a, b) => a.registered_at - b.registered_at);
       });
       setLastUpdate(Date.now());
     };
@@ -240,9 +271,9 @@ export function useJacquesClient(): UseJacquesClientReturn {
           if (index >= 0) {
             const newSessions = [...prev];
             newSessions[index] = session;
-            return newSessions.sort((a, b) => b.last_activity - a.last_activity);
+            return newSessions.sort((a, b) => a.registered_at - b.registered_at);
           }
-          return [...prev, session].sort((a, b) => b.last_activity - a.last_activity);
+          return [...prev, session].sort((a, b) => a.registered_at - b.registered_at);
         });
       }
 
@@ -287,6 +318,30 @@ export function useJacquesClient(): UseJacquesClientReturn {
       });
     };
 
+    jacquesClient.onFocusTerminalResult = (sessionId: string, success: boolean, method: string, error?: string) => {
+      setFocusTerminalResult({ sessionId, success, method, error });
+      setLastUpdate(Date.now());
+      // Auto-clear after 3 seconds
+      setTimeout(() => setFocusTerminalResult(null), 3000);
+
+      // Show toast feedback
+      if (success) {
+        toastStore.push({
+          title: 'Terminal Focused',
+          body: `Activated via ${method}`,
+          priority: 'low',
+          category: 'focus',
+        });
+      } else {
+        toastStore.push({
+          title: 'Focus Failed',
+          body: error || `Unsupported terminal (${method})`,
+          priority: 'medium',
+          category: 'focus',
+        });
+      }
+    };
+
     jacquesClient.onApiLog = (log: ApiLog) => {
       setApiLogs(prev => {
         const newLogs = [...prev, log];
@@ -295,6 +350,16 @@ export function useJacquesClient(): UseJacquesClientReturn {
           return newLogs.slice(-MAX_API_LOGS);
         }
         return newLogs;
+      });
+    };
+
+    jacquesClient.onHandoffReady = (_sessionId: string, path: string) => {
+      const filename = path.split('/').pop() ?? 'handoff';
+      toastStore.push({
+        title: 'Handoff Ready',
+        body: `Generated ${filename}`,
+        priority: 'medium',
+        category: 'handoff',
       });
     };
 
@@ -325,6 +390,10 @@ export function useJacquesClient(): UseJacquesClientReturn {
     client?.toggleAutoCompact();
   }, [client]);
 
+  const focusTerminal = useCallback((sessionId: string) => {
+    client?.focusTerminal(sessionId);
+  }, [client]);
+
   return {
     sessions,
     focusedSessionId,
@@ -336,5 +405,7 @@ export function useJacquesClient(): UseJacquesClientReturn {
     selectSession,
     triggerAction,
     toggleAutoCompact,
+    focusTerminal,
+    focusTerminalResult,
   };
 }

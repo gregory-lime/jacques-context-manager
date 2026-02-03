@@ -338,6 +338,26 @@ If `context_update` event arrives before `session_start`, the registry auto-crea
 
 ## Important Details
 
+### Server Management
+
+**Starting**: `npm run start:server` (standalone) or `jacques` (dashboard with embedded server)
+
+**Stopping**: `npm run stop:server` or press Q/Ctrl+C in the dashboard
+
+**PID file**: `~/.jacques/server.pid` — written by standalone server, used by stop script
+
+**Troubleshooting**: If sessions stop registering after a restart:
+1. Run `npm run stop:server` to kill any zombie processes
+2. Verify: `lsof -i :4242 -i :4243` should show nothing
+3. Verify: `ls /tmp/jacques.sock` should not exist
+4. Start fresh: `npm run start:server` or `jacques`
+
+**Pre-flight checks**: The standalone server checks for existing instances before starting:
+- PID file liveness (is the recorded PID still alive?)
+- Socket liveness (is something listening on /tmp/jacques.sock?)
+- Port availability (are 4242/4243 free?)
+If any check fails, it prints a clear error and exits.
+
 ### Terminal Identity
 Sessions are uniquely identified by `terminal_key` which combines multiple terminal environment variables (TTY, iTerm session ID, terminal PID, etc.). This allows Jacques to track sessions across terminal windows.
 

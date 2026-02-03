@@ -424,6 +424,18 @@ export interface ClaudeOperationMessage {
 }
 
 /**
+ * Focus terminal result message
+ * Sent back to the client that requested terminal focus
+ */
+export interface FocusTerminalResultMessage {
+  type: 'focus_terminal_result';
+  session_id: string;
+  success: boolean;
+  method: string;
+  error?: string;
+}
+
+/**
  * API log message
  * Broadcasts HTTP API requests to GUI for debugging
  */
@@ -457,7 +469,8 @@ export type ServerMessage =
   | HandoffContextMessage
   | HandoffContextErrorMessage
   | ClaudeOperationMessage
-  | ApiLogMessage;
+  | ApiLogMessage
+  | FocusTerminalResultMessage;
 
 /**
  * Client request to select a session
@@ -494,13 +507,22 @@ export interface GetHandoffContextRequest {
 }
 
 /**
+ * Client request to focus a terminal window
+ */
+export interface FocusTerminalRequest {
+  type: 'focus_terminal';
+  session_id: string;
+}
+
+/**
  * Union type for all client → server messages
  */
 export type ClientMessage =
   | SelectSessionRequest
   | TriggerActionRequest
   | ToggleAutoCompactRequest
-  | GetHandoffContextRequest;
+  | GetHandoffContextRequest
+  | FocusTerminalRequest;
 
 // ============================================================
 // Configuration

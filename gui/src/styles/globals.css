@@ -248,6 +248,11 @@ button {
   opacity: 0.9 !important;
 }
 
+.jacques-focus-btn:hover {
+  opacity: 0.9 !important;
+  background-color: rgba(230, 126, 82, 0.08);
+}
+
 /* Horizontal scroll for active sessions */
 .jacques-horizontal-scroll {
   display: flex;

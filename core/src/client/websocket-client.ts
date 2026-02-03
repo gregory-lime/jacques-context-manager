@@ -27,6 +27,7 @@ export interface JacquesClientEvents {
   focus_changed: (sessionId: string | null, session: Session | null) => void;
   autocompact_toggled: (enabled: boolean, warning?: string) => void;
   handoff_ready: (sessionId: string, path: string) => void;
+  focus_terminal_result: (sessionId: string, success: boolean, method: string, error?: string) => void;
   error: (error: Error) => void;
 }
 
@@ -129,6 +130,10 @@ export class JacquesClient extends EventEmitter {
           this.emit("handoff_ready", message.session_id, message.path);
           break;
 
+        case "focus_terminal_result":
+          this.emit("focus_terminal_result", message.session_id, message.success, message.method, message.error);
+          break;
+
         default:
           this.warn(
             `[Client] Unknown message type: ${(message as ServerMessage).type}`
@@ -199,6 +204,16 @@ export class JacquesClient extends EventEmitter {
       session_id: sessionId,
       action,
       options,
+    });
+  }
+
+  /**
+   * Focus a terminal window for a session
+   */
+  focusTerminal(sessionId: string): boolean {
+    return this.send({
+      type: "focus_terminal",
+      session_id: sessionId,
     });
   }
 
