@@ -80,6 +80,8 @@ export interface Session {
   context_metrics: ContextMetrics | null;
   source?: SessionSource | "startup" | "resume" | "clear" | "compact";
   autocompact: AutoCompactStatus | null;
+  git_branch?: string | null;
+  git_worktree?: string | null;
 }
 
 // ============================================================

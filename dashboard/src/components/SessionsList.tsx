@@ -19,8 +19,15 @@ interface SessionsListProps {
 function formatSessionName(session: Session): string {
   const project = session.project || "unknown";
   const terminal = session.terminal?.term_program || "Terminal";
-  const maxLength = 40;
-  const formatted = `${project} / ${terminal}`;
+  const branch = session.git_branch;
+  const maxLength = 50;
+
+  let formatted: string;
+  if (branch) {
+    formatted = `${project} @${branch} / ${terminal}`;
+  } else {
+    formatted = `${project} / ${terminal}`;
+  }
 
   if (formatted.length > maxLength) {
     return formatted.substring(0, maxLength - 3) + "...";

@@ -15,6 +15,7 @@ export interface SessionListItem {
   isActive?: boolean;
   isFocused?: boolean;
   status?: string;
+  gitBranch?: string;
 }
 
 interface SessionListProps {
@@ -122,6 +123,12 @@ export function SessionList({
                   <>
                     <span style={styles.dot}>·</span>
                     <span style={{ color: statusColor }}>{session.status}</span>
+                  </>
+                )}
+                {session.gitBranch && (
+                  <>
+                    <span style={styles.dot}>·</span>
+                    <span style={{ color: colors.accent }}>@{session.gitBranch}</span>
                   </>
                 )}
               </div>

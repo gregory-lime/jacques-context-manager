@@ -107,6 +107,7 @@ interface SessionListItem {
   agentCount?: number;
   inputTokens?: number;
   outputTokens?: number;
+  gitBranch?: string;
 }
 
 interface PlanItem { title: string; sessionId: string; }
@@ -161,6 +162,7 @@ function toSessionListItems(liveSessions: Session[], savedSessions: SessionEntry
       status: session.status,
       inputTokens: session.context_metrics?.total_input_tokens || undefined,
       outputTokens: session.context_metrics?.total_output_tokens || undefined,
+      gitBranch: session.git_branch ?? undefined,
     });
   }
 
@@ -549,6 +551,9 @@ export function ProjectDashboard() {
                           )}
                           <span style={styles.historyTitle}>{session.displayTitle}</span>
                         </div>
+                        {session.gitBranch && (
+                          <span style={styles.historyBranch}>@{session.gitBranch}</span>
+                        )}
                         <span style={styles.historyDate}>{formatDate(session.date)}</span>
                         {session.contextPercent !== undefined && (
                           <span style={{
@@ -787,6 +792,12 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap' as const,
+  },
+  historyBranch: {
+    fontSize: '11px',
+    color: PALETTE.coral,
+    flexShrink: 0,
+    fontFamily: 'monospace',
   },
   historyDate: {
     fontSize: '11px',

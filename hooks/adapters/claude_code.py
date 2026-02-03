@@ -194,7 +194,10 @@ class ClaudeCodeAdapter(BaseAdapter):
         
         # Get auto-compact settings
         autocompact = self.get_autocompact_settings()
-        
+
+        # Detect git branch and worktree
+        git_info = self.detect_git_info(project_info['project_path'])
+
         return self.build_base_payload(
             event='session_start',
             session_id=session_id,
@@ -208,6 +211,8 @@ class ClaudeCodeAdapter(BaseAdapter):
             terminal=terminal,
             terminal_key=terminal_key,
             autocompact=autocompact,
+            git_branch=git_info['git_branch'],
+            git_worktree=git_info['git_worktree'],
         )
     
     # =========================================================================

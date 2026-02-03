@@ -75,6 +75,10 @@ export class SessionRegistry {
       if (event.autocompact) {
         existing.autocompact = event.autocompact;
       }
+      if (event.git_branch !== undefined) {
+        existing.git_branch = event.git_branch || null;
+        existing.git_worktree = event.git_worktree || null;
+      }
       this.log(`[Registry] Terminal key updated: ${existing.terminal_key}`);
       return existing;
     }
@@ -95,6 +99,8 @@ export class SessionRegistry {
       registered_at: event.timestamp,
       context_metrics: null,
       autocompact: event.autocompact || null,
+      git_branch: event.git_branch || null,
+      git_worktree: event.git_worktree || null,
     };
 
     this.sessions.set(event.session_id, session);
@@ -189,8 +195,10 @@ export class SessionRegistry {
         registered_at: event.timestamp,
         context_metrics: null,
         autocompact: event.autocompact || null,
+        git_branch: event.git_branch || null,
+        git_worktree: event.git_worktree || null,
       };
-      
+
       this.sessions.set(event.session_id, session);
       isNewSession = true;
     }
@@ -269,6 +277,15 @@ export class SessionRegistry {
     if (event.transcript_path && !session.transcript_path) {
       session.transcript_path = event.transcript_path;
       this.log(`[Registry] Transcript path set: ${session.transcript_path}`);
+    }
+
+    // Update git branch if provided (from statusLine hook)
+    if (event.git_branch !== undefined) {
+      if (event.git_branch !== session.git_branch) {
+        this.log(`[Registry] Git branch updated: "${session.git_branch}" -> "${event.git_branch}"`);
+      }
+      session.git_branch = event.git_branch || null;
+      session.git_worktree = event.git_worktree || null;
     }
 
     if (isNewSession) {

@@ -362,6 +362,46 @@ class BaseAdapter(ABC):
         return f"UNKNOWN:{time.time()}"
     
     # =========================================================================
+    # Git Detection
+    # =========================================================================
+
+    def detect_git_info(self, project_path: str) -> dict:
+        """
+        Detect git branch and worktree status from project directory.
+
+        Returns dict with:
+            - git_branch: Current branch name (empty string if not a git repo)
+            - git_worktree: Worktree name if in a worktree (empty string otherwise)
+        """
+        result = {'git_branch': '', 'git_worktree': ''}
+        if not project_path or not os.path.isdir(project_path):
+            return result
+        try:
+            import subprocess
+            branch = subprocess.run(
+                ['git', '-C', project_path, 'rev-parse', '--abbrev-ref', 'HEAD'],
+                capture_output=True, text=True, timeout=5
+            )
+            if branch.returncode == 0:
+                result['git_branch'] = branch.stdout.strip()
+
+            # Detect worktree: git-dir differs from git-common-dir
+            git_dir = subprocess.run(
+                ['git', '-C', project_path, 'rev-parse', '--git-dir'],
+                capture_output=True, text=True, timeout=5
+            )
+            common_dir = subprocess.run(
+                ['git', '-C', project_path, 'rev-parse', '--git-common-dir'],
+                capture_output=True, text=True, timeout=5
+            )
+            if (git_dir.returncode == 0 and common_dir.returncode == 0 and
+                    git_dir.stdout.strip() != common_dir.stdout.strip()):
+                result['git_worktree'] = os.path.basename(project_path)
+        except Exception:
+            pass
+        return result
+
+    # =========================================================================
     # Debug Logging
     # =========================================================================
     

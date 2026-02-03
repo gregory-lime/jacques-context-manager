@@ -139,6 +139,10 @@ export interface Session {
   start_reason?: 'startup' | 'resume' | 'clear' | 'compact';
   /** Auto-compact status (from ~/.claude/settings.json) */
   autocompact: AutoCompactStatus | null;
+  /** Current git branch name */
+  git_branch?: string | null;
+  /** Git worktree name (if session is in a worktree) */
+  git_worktree?: string | null;
 }
 
 // ============================================================
@@ -172,6 +176,10 @@ export interface SessionStartEvent extends BaseEvent {
   terminal_key: string;
   /** Auto-compact settings (from ~/.claude/settings.json) */
   autocompact?: AutoCompactStatus;
+  /** Git branch detected from project directory */
+  git_branch?: string;
+  /** Git worktree name */
+  git_worktree?: string;
 }
 
 /**
@@ -209,6 +217,10 @@ export interface ContextUpdateEvent extends BaseEvent {
   session_title?: string;
   /** Path to the session transcript file (from statusLine hook) */
   transcript_path?: string;
+  /** Git branch detected from project directory */
+  git_branch?: string;
+  /** Git worktree name (basename of worktree dir) */
+  git_worktree?: string;
 }
 
 /**

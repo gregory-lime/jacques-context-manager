@@ -53,6 +53,8 @@ export interface Session {
   last_activity: number;
   registered_at: number;
   transcript_path?: string;
+  git_branch?: string | null;
+  git_worktree?: string | null;
 }
 
 // Server message types
