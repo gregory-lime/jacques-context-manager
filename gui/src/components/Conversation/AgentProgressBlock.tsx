@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, useRef, forwardRef, useImperativeHandle, type ReactNode } from 'react';
+import { Search, FileText, Bot, Terminal, Loader, AlertTriangle, ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
 import type { AgentProgressContent } from '../../types';
 import { colors } from '../../styles/theme';
 import { CollapsibleBlock, type CollapsibleBlockRef } from './CollapsibleBlock';
@@ -21,18 +22,18 @@ export interface AgentProgressBlockRef {
 /**
  * Get icon and color for agent type
  */
-function getAgentTypeStyle(agentType?: string): { icon: string; color: string; label: string } {
+function getAgentTypeStyle(agentType?: string): { icon: ReactNode; color: string; label: string } {
   switch (agentType?.toLowerCase()) {
     case 'explore':
-      return { icon: '🔍', color: '#60A5FA', label: 'Explore' }; // Blue
+      return { icon: <Search size={14} />, color: '#60A5FA', label: 'Explore' };
     case 'plan':
-      return { icon: '📋', color: '#34D399', label: 'Plan' }; // Green
+      return { icon: <FileText size={14} />, color: '#34D399', label: 'Plan' };
     case 'general-purpose':
-      return { icon: '🤖', color: '#A78BFA', label: 'General' }; // Purple
+      return { icon: <Bot size={14} />, color: '#A78BFA', label: 'General' };
     case 'bash':
-      return { icon: '💻', color: '#F472B6', label: 'Bash' }; // Pink
+      return { icon: <Terminal size={14} />, color: '#F472B6', label: 'Bash' };
     default:
-      return { icon: '🤖', color: '#9CA3AF', label: agentType || 'Agent' }; // Gray
+      return { icon: <Bot size={14} />, color: '#9CA3AF', label: agentType || 'Agent' };
   }
 }
 
@@ -151,7 +152,7 @@ export const AgentProgressBlock = forwardRef<AgentProgressBlockRef, AgentProgres
         <div style={styles.statsBar}>
           {content.agentType && (
             <span style={{ ...styles.typeBadge, backgroundColor: typeStyle.color }}>
-              {typeStyle.icon} {typeStyle.label}
+              <span style={styles.badgeIcon}>{typeStyle.icon}</span> {typeStyle.label}
             </span>
           )}
           {content.model && (
@@ -198,12 +199,12 @@ export const AgentProgressBlock = forwardRef<AgentProgressBlockRef, AgentProgres
             <div style={styles.label}>Response:</div>
             {loadingResponse ? (
               <div style={styles.loadingResponse}>
-                <span style={styles.spinner}>◐</span>
+                <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} />
                 Loading response...
               </div>
             ) : responseError ? (
               <div style={styles.errorResponse}>
-                ⚠ {responseError}
+                <AlertTriangle size={14} /> {responseError}
               </div>
             ) : finalResponse ? (
               // Check if this is a Plan agent - render response as Markdown
@@ -225,7 +226,10 @@ export const AgentProgressBlock = forwardRef<AgentProgressBlockRef, AgentProgres
                       style={styles.expandResponseButton}
                       onClick={() => setResponseExpanded(!responseExpanded)}
                     >
-                      {responseExpanded ? '▲ Show less' : '▼ Show full response'}
+                      <span style={styles.expandIcon}>
+                        {responseExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      </span>
+                      {responseExpanded ? 'Show less' : 'Show full response'}
                     </button>
                   )}
                 </div>
@@ -248,7 +252,10 @@ export const AgentProgressBlock = forwardRef<AgentProgressBlockRef, AgentProgres
             }}
             onClick={() => setShowFullConversation(!showFullConversation)}
           >
-            {showFullConversation ? '▼ Hide Full Conversation' : '▶ View Full Conversation'}
+            <span style={styles.expandIcon}>
+              {showFullConversation ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            </span>
+            {showFullConversation ? 'Hide Full Conversation' : 'View Full Conversation'}
           </button>
         )}
 
@@ -280,11 +287,18 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: 'wrap' as const,
   },
   typeBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
     padding: '4px 12px',
     borderRadius: '12px',
     fontSize: '13px',
     fontWeight: 600,
     color: 'white',
+  },
+  badgeIcon: {
+    display: 'inline-flex',
+    alignItems: 'center',
   },
   modelBadge: {
     padding: '4px 10px',
@@ -377,11 +391,10 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.textMuted,
     fontSize: '12px',
   },
-  spinner: {
-    display: 'inline-block',
-    animation: 'spin 1s linear infinite',
-  },
   errorResponse: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
     padding: '12px',
     color: colors.warning,
     fontSize: '12px',
@@ -428,6 +441,9 @@ const styles: Record<string, React.CSSProperties> = {
     position: 'relative' as const,
   },
   expandResponseButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
     padding: '4px 8px',
     backgroundColor: 'transparent',
     border: `1px solid ${colors.borderSubtle}`,
@@ -437,5 +453,9 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     alignSelf: 'flex-start',
     transition: 'all 150ms ease',
+  },
+  expandIcon: {
+    display: 'inline-flex',
+    alignItems: 'center',
   },
 };

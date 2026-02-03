@@ -1,6 +1,8 @@
 import type { Session, SessionBadges } from '../types';
 import { colors } from '../styles/theme';
 import { ContextMeter } from './ContextMeter';
+import { PlanIcon, AgentIcon } from './Icons';
+import { Plug, Globe, Zap, GitBranch, Play } from 'lucide-react';
 
 interface SessionCardProps {
   session: Session;
@@ -11,6 +13,44 @@ interface SessionCardProps {
   onAgentClick?: () => void;
 }
 
+const PLAN_TITLE_PATTERNS = [
+  /^implement the following plan[:\s]*/i,
+  /^here is the plan[:\s]*/i,
+  /^follow this plan[:\s]*/i,
+];
+
+function formatSessionTitle(rawTitle: string | null): { isPlan: boolean; displayTitle: string } {
+  if (!rawTitle) return { isPlan: false, displayTitle: 'Untitled' };
+  for (const pattern of PLAN_TITLE_PATTERNS) {
+    if (pattern.test(rawTitle)) {
+      const cleaned = rawTitle.replace(pattern, '').trim();
+      const headingMatch = cleaned.match(/^#\s+(.+)/m);
+      const planName = headingMatch
+        ? headingMatch[1].trim()
+        : cleaned.split('\n')[0].trim();
+      const display = planName.length > 60 ? planName.slice(0, 57) + '...' : planName;
+      return { isPlan: true, displayTitle: display || 'Unnamed Plan' };
+    }
+  }
+  return { isPlan: false, displayTitle: rawTitle };
+}
+
+function timeAgo(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+const STATUS_CONFIG = {
+  working: { dotColor: '#E67E52', textColor: '#E67E52', pulse: true },
+  idle:    { dotColor: '#6B7075', textColor: '#6B7075', pulse: false },
+  active:  { dotColor: '#4ADE80', textColor: '#4ADE80', pulse: false },
+} as const;
+
 export function SessionCard({
   session,
   isFocused,
@@ -19,46 +59,21 @@ export function SessionCard({
   onPlanClick,
   onAgentClick,
 }: SessionCardProps) {
-  const project = session.project || 'unknown';
-  const title = session.session_title || 'Untitled';
-  const model = session.model?.display_name || session.model?.id || 'Unknown model';
   const status = session.status;
+  const statusCfg = STATUS_CONFIG[status] || STATUS_CONFIG.idle;
+  const { isPlan, displayTitle } = formatSessionTitle(session.session_title);
 
-  // Status icon
-  const statusIcon = status === 'working' ? '⚡' : status === 'idle' ? '💤' : '●';
-
-  // Badge info - plans and agents are prominent/clickable
-  const hasPlan = badges && badges.planCount > 0;
-  const hasAgents = badges && badges.agentCount > 0;
-
-  // Build agent type string
-  let agentTypeStr = '';
-  if (hasAgents && badges) {
-    const types: string[] = [];
-    if (badges.agentTypes.explore > 0) types.push('explore');
-    if (badges.agentTypes.plan > 0) types.push('plan');
-    agentTypeStr = types.length > 0 ? ` (${types.join(', ')})` : '';
-  }
-
-  // Secondary badges (smaller, inline)
-  const secondaryBadges: string[] = [];
-  if (badges) {
-    if (badges.mode === 'planning') secondaryBadges.push('planning');
-    if (badges.mode === 'execution') secondaryBadges.push('executing');
-    if (badges.mcpCount > 0) secondaryBadges.push('mcp');
-    if (badges.webSearchCount > 0) secondaryBadges.push('web');
-    if (badges.hadAutoCompact) secondaryBadges.push('compacted');
-  }
-
-  // Shorten model name for display
+  const model = session.model?.display_name || session.model?.id || 'Unknown model';
   const shortModel = model
     .replace('claude-', '')
     .replace('-20251101', '')
     .replace('-20250218', '')
     .replace('-20250514', '');
 
+  const hasPlan = badges && badges.planCount > 0;
+  const hasAgents = badges && badges.agentCount > 0;
+
   const handleCardClick = (e: React.MouseEvent) => {
-    // Don't trigger card click if clicking on a badge button
     if ((e.target as HTMLElement).closest('button')) return;
     onClick?.();
   };
@@ -73,203 +88,245 @@ export function SessionCard({
     onAgentClick?.();
   };
 
+  const focusedStyles: React.CSSProperties = isFocused ? {
+    borderColor: colors.accent,
+    borderLeftWidth: '3px',
+    paddingLeft: '18px',
+    boxShadow: '0 0 16px rgba(230, 126, 82, 0.15)',
+  } : {};
+
   return (
     <div
+      className="jacques-session-card"
       style={{
         ...styles.card,
-        borderColor: isFocused ? colors.accent : colors.borderSubtle,
+        ...focusedStyles,
         cursor: onClick ? 'pointer' : 'default',
       }}
       onClick={handleCardClick}
     >
-      {/* Header */}
+      {/* ── Header Row ── */}
       <div style={styles.header}>
-        <span style={styles.project}>{project}</span>
-        <span style={styles.status}>
-          {statusIcon} {status}
-        </span>
+        <div style={styles.headerLeft}>
+          <span
+            style={{
+              ...styles.statusDot,
+              backgroundColor: statusCfg.dotColor,
+              animation: statusCfg.pulse ? 'status-pulse 1.8s ease-in-out infinite' : 'none',
+            }}
+          />
+          <span style={{ ...styles.statusText, color: statusCfg.textColor }}>
+            {status}
+          </span>
+          {badges?.mode && (
+            <span
+              style={{
+                ...styles.modePill,
+                color: badges.mode === 'planning' ? '#34D399' : '#60A5FA',
+                backgroundColor: badges.mode === 'planning'
+                  ? 'rgba(52, 211, 153, 0.12)'
+                  : 'rgba(96, 165, 250, 0.12)',
+              }}
+            >
+              {badges.mode === 'planning'
+                ? <><GitBranch size={9} style={{ marginRight: 3 }} />planning</>
+                : <><Play size={9} style={{ marginRight: 3 }} />executing</>
+              }
+            </span>
+          )}
+        </div>
+        <div style={styles.headerRight}>
+          <span style={styles.modelName}>{shortModel}</span>
+          <span style={styles.timeAgo}>{timeAgo(session.last_activity)}</span>
+        </div>
       </div>
 
-      {/* Title */}
-      <div style={styles.title}>{title}</div>
+      {/* ── Title ── */}
+      <div style={styles.titleRow}>
+        {isPlan && (
+          <PlanIcon size={14} color="#34D399" style={{ flexShrink: 0, marginRight: 6 }} />
+        )}
+        <span style={styles.title}>{displayTitle}</span>
+      </div>
 
-      {/* Model */}
-      <div style={styles.model}>{shortModel}</div>
-
-      {/* Context Meter */}
+      {/* ── Context Meter ── */}
       <div style={styles.meter}>
         <ContextMeter metrics={session.context_metrics} />
       </div>
 
-      {/* Prominent Badges Row (Plans & Agents) */}
-      {(hasPlan || hasAgents) && (
-        <div style={styles.prominentBadges}>
+      {/* ── Footer Row ── */}
+      <div style={styles.footer}>
+        <div style={styles.footerLeft}>
           {hasPlan && (
             <button
-              style={styles.planBadge}
+              style={styles.indicatorButton}
+              className="jacques-indicator"
               onClick={handlePlanClick}
               type="button"
               title="View plans"
             >
-              📋 {badges!.planCount} plan{badges!.planCount > 1 ? 's' : ''}
+              <PlanIcon size={13} color="#34D399" />
+              <span style={styles.indicatorCount}>{badges!.planCount}</span>
             </button>
           )}
           {hasAgents && (
             <button
-              style={styles.agentBadge}
+              style={styles.indicatorButton}
+              className="jacques-indicator"
               onClick={handleAgentClick}
               type="button"
               title="View agents"
             >
-              🤖 {badges!.agentCount} agent{badges!.agentCount > 1 ? 's' : ''}{agentTypeStr}
+              <AgentIcon size={13} color="#FF6600" />
+              <span style={styles.indicatorCount}>{badges!.agentCount}</span>
             </button>
           )}
         </div>
-      )}
 
-      {/* Secondary Badges Row */}
-      {secondaryBadges.length > 0 && (
-        <div style={styles.secondaryBadges}>
-          {secondaryBadges.map((badge, i) => (
-            <span key={i}>
-              {i > 0 && <span style={styles.metaDot}>·</span>}
-              <span style={getSecondaryBadgeStyle(badge)}>{badge}</span>
-            </span>
-          ))}
+        <div style={styles.footerCenter}>
+          {badges && badges.mcpCount > 0 && (
+            <Plug size={10} color={colors.textMuted} style={{ opacity: 0.7 }} />
+          )}
+          {badges && badges.webSearchCount > 0 && (
+            <Globe size={10} color="#60A5FA" style={{ opacity: 0.7 }} />
+          )}
+          {badges?.hadAutoCompact && (
+            <Zap size={10} color={colors.textMuted} style={{ opacity: 0.7 }} />
+          )}
         </div>
-      )}
 
-      {/* Footer */}
-      <div style={styles.footer}>
-        <span style={styles.terminal}>
-          {session.terminal?.term_program || 'Terminal'}
+        <span className="jacques-session-card-hint" style={styles.hint}>
+          Click to view →
         </span>
-        {isFocused && (
-          <span style={styles.focusedBadge}>Focused</span>
-        )}
       </div>
     </div>
   );
 }
 
-/**
- * Get style for secondary badges
- */
-function getSecondaryBadgeStyle(badge: string): React.CSSProperties {
-  if (badge === 'planning') {
-    return { color: '#34D399' }; // Green for planning
-  }
-  if (badge === 'executing') {
-    return { color: '#60A5FA' }; // Blue for execution
-  }
-  if (badge === 'mcp' || badge === 'web') {
-    return { color: colors.textSecondary }; // Gray for external tools
-  }
-  if (badge === 'compacted') {
-    return { color: colors.textMuted, fontStyle: 'italic' as const };
-  }
-  return { color: colors.textSecondary };
-}
-
 const styles: Record<string, React.CSSProperties> = {
   card: {
     backgroundColor: colors.bgSecondary,
+    borderRadius: '10px',
     border: `1px solid ${colors.borderSubtle}`,
-    borderRadius: '8px',
-    padding: '16px',
-    transition: 'border-color 150ms ease, background-color 150ms ease',
+    padding: '20px',
+    position: 'relative',
   },
+
+  // Header
   header: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '8px',
+    marginBottom: '14px',
   },
-  project: {
-    fontSize: '14px',
-    fontWeight: 600,
-    color: colors.accentOrange,
+  headerLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
   },
-  status: {
-    fontSize: '12px',
+  statusDot: {
+    width: '6px',
+    height: '6px',
+    borderRadius: '50%',
+    flexShrink: 0,
+  },
+  statusText: {
+    fontSize: '11px',
+    fontWeight: 500,
+    textTransform: 'lowercase' as const,
+    letterSpacing: '0.02em',
+  },
+  modePill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '1px 6px',
+    fontSize: '10px',
+    fontWeight: 500,
+    borderRadius: '3px',
+    lineHeight: 1.4,
+    marginLeft: '2px',
+  },
+  headerRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  modelName: {
+    fontSize: '11px',
     color: colors.textMuted,
+    fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
+    letterSpacing: '-0.02em',
+  },
+  timeAgo: {
+    fontSize: '10px',
+    color: colors.textMuted,
+    opacity: 0.7,
+  },
+
+  // Title
+  titleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    marginBottom: '16px',
+    minWidth: 0,
   },
   title: {
-    fontSize: '14px',
+    fontSize: '15px',
+    fontWeight: 500,
     color: colors.textPrimary,
-    marginBottom: '4px',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap' as const,
+    lineHeight: 1.3,
   },
-  model: {
-    fontSize: '12px',
-    color: colors.textSecondary,
-    marginBottom: '8px',
-  },
+
+  // Meter
   meter: {
-    marginBottom: '12px',
+    marginBottom: '16px',
   },
-  prominentBadges: {
-    display: 'flex',
-    gap: '8px',
-    marginBottom: '8px',
-    flexWrap: 'wrap' as const,
-  },
-  planBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '4px',
-    padding: '4px 10px',
-    fontSize: '12px',
-    fontWeight: 500,
-    color: '#A78BFA',
-    backgroundColor: 'rgba(167, 139, 250, 0.15)',
-    border: '1px solid rgba(167, 139, 250, 0.3)',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    transition: 'all 150ms ease',
-  },
-  agentBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '4px',
-    padding: '4px 10px',
-    fontSize: '12px',
-    fontWeight: 500,
-    color: colors.accentOrange,
-    backgroundColor: 'rgba(255, 102, 0, 0.15)',
-    border: '1px solid rgba(255, 102, 0, 0.3)',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    transition: 'all 150ms ease',
-  },
-  secondaryBadges: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '4px',
-    fontSize: '11px',
-    marginBottom: '8px',
-  },
-  metaDot: {
-    color: colors.textMuted,
-    margin: '0 2px',
-  },
+
+  // Footer
   footer: {
     display: 'flex',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    fontSize: '12px',
+    justifyContent: 'space-between',
+    minHeight: '20px',
   },
-  terminal: {
-    color: colors.textMuted,
+  footerLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
   },
-  focusedBadge: {
-    backgroundColor: colors.accent,
-    color: colors.bgPrimary,
-    padding: '2px 8px',
+  indicatorButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '3px',
+    border: 'none',
+    background: 'none',
+    padding: '2px 4px',
+    margin: '-2px -4px',
     borderRadius: '4px',
-    fontWeight: 500,
+    cursor: 'pointer',
+    opacity: 0.5,
+    transition: 'opacity 150ms ease',
+  },
+  indicatorCount: {
     fontSize: '11px',
+    color: colors.textSecondary,
+    fontWeight: 500,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  footerCenter: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  hint: {
+    fontSize: '10px',
+    color: colors.textMuted,
+    opacity: 0,
+    transition: 'opacity 200ms ease',
+    whiteSpace: 'nowrap' as const,
+    letterSpacing: '0.01em',
   },
 };

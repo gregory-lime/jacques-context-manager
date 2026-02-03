@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { MessageSquare } from 'lucide-react';
 import { colors } from '../styles/theme';
 import { ConversationViewer } from '../components/Conversation';
+import { TerminalPanel, Badge, SectionHeader, EmptyState } from '../components/ui';
 import type { SavedConversation } from '../types';
 
 // Mock data for demonstration
@@ -125,49 +127,52 @@ export function Conversations() {
 
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>Conversations</h1>
+      <SectionHeader title="Conversations" />
       <p style={styles.description}>
         Browse and view saved conversations from your Claude Code sessions.
       </p>
 
-      {/* Conversation List */}
-      <div style={styles.list}>
-        {MOCK_CONVERSATIONS.map((conv) => (
-          <button
-            key={conv.id}
-            style={styles.conversationCard}
-            onClick={() => setSelectedConversation(conv)}
-            type="button"
-          >
-            <div style={styles.cardHeader}>
-              <span style={styles.cardTitle}>{conv.title}</span>
-              <span style={styles.cardDate}>{conv.date}</span>
-            </div>
-            <div style={styles.cardMeta}>
-              <span>{conv.project}</span>
-              <span>•</span>
-              <span>{conv.metadata.messageCount} messages</span>
-              <span>•</span>
-              <span>{conv.metadata.toolCallCount} tool calls</span>
-            </div>
-            {conv.metadata.technologies && (
-              <div style={styles.cardTags}>
-                {conv.metadata.technologies.map((tech) => (
-                  <span key={tech} style={styles.tag}>{tech}</span>
-                ))}
+      {MOCK_CONVERSATIONS.length === 0 ? (
+        <TerminalPanel title="conversations" showDots={true}>
+          <EmptyState
+            icon={MessageSquare}
+            title="No saved conversations yet"
+            description="Use the dashboard to save conversations from your Claude Code sessions."
+          />
+        </TerminalPanel>
+      ) : (
+        <TerminalPanel title="conversations" showDots={true} noPadding={true}>
+          {MOCK_CONVERSATIONS.map((conv, index) => (
+            <button
+              key={conv.id}
+              style={styles.conversationCard}
+              onClick={() => setSelectedConversation(conv)}
+              type="button"
+            >
+              <div style={styles.cardRow}>
+                <span style={styles.lineNum}>{index + 1}</span>
+                <div style={styles.cardContent}>
+                  <div style={styles.cardHeader}>
+                    <span style={styles.cardTitle}>{conv.title}</span>
+                    <span style={styles.cardDate}>{conv.date}</span>
+                  </div>
+                  <div style={styles.cardMeta}>
+                    <Badge label={conv.project} variant="default" />
+                    <Badge label={`${conv.metadata.messageCount} messages`} variant="default" />
+                    <Badge label={`${conv.metadata.toolCallCount} tool calls`} variant="default" />
+                  </div>
+                  {conv.metadata.technologies && (
+                    <div style={styles.cardTags}>
+                      {conv.metadata.technologies.map((tech) => (
+                        <Badge key={tech} label={tech} variant="default" />
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {MOCK_CONVERSATIONS.length === 0 && (
-        <div style={styles.empty}>
-          <p>No saved conversations yet.</p>
-          <p style={styles.hint}>
-            Use the dashboard to save conversations from your Claude Code sessions.
-          </p>
-        </div>
+            </button>
+          ))}
+        </TerminalPanel>
       )}
     </div>
   );
@@ -176,33 +181,43 @@ export function Conversations() {
 const styles: Record<string, React.CSSProperties> = {
   container: {
     maxWidth: '1200px',
-  },
-  title: {
-    fontSize: '24px',
-    fontWeight: 600,
-    color: colors.textPrimary,
-    marginBottom: '8px',
+    padding: '24px',
   },
   description: {
     fontSize: '14px',
     color: colors.textSecondary,
     marginBottom: '24px',
   },
-  list: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '12px',
-  },
   conversationCard: {
     display: 'block',
     width: '100%',
-    padding: '16px',
-    backgroundColor: colors.bgSecondary,
-    border: `1px solid ${colors.borderSubtle}`,
-    borderRadius: '8px',
+    padding: 0,
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderBottom: `1px solid ${colors.borderSubtle}`,
     textAlign: 'left' as const,
     cursor: 'pointer',
-    transition: 'all 150ms ease',
+    transition: 'background-color 150ms ease',
+  },
+  cardRow: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    padding: '16px',
+  },
+  lineNum: {
+    width: '32px',
+    fontSize: '11px',
+    color: colors.textMuted,
+    opacity: 0.4,
+    textAlign: 'right' as const,
+    paddingRight: '12px',
+    flexShrink: 0,
+    fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
+    paddingTop: '2px',
+  },
+  cardContent: {
+    flex: 1,
+    minWidth: 0,
   },
   cardHeader: {
     display: 'flex',
@@ -221,33 +236,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   cardMeta: {
     display: 'flex',
-    gap: '8px',
-    fontSize: '13px',
-    color: colors.textSecondary,
+    gap: '6px',
     marginBottom: '8px',
+    flexWrap: 'wrap' as const,
   },
   cardTags: {
     display: 'flex',
     gap: '6px',
     flexWrap: 'wrap' as const,
-  },
-  tag: {
-    padding: '2px 8px',
-    fontSize: '11px',
-    backgroundColor: colors.bgElevated,
-    color: colors.textMuted,
-    borderRadius: '4px',
-  },
-  empty: {
-    padding: '48px',
-    textAlign: 'center' as const,
-    backgroundColor: colors.bgSecondary,
-    borderRadius: '8px',
-    border: `1px dashed ${colors.borderSubtle}`,
-    color: colors.textMuted,
-  },
-  hint: {
-    fontSize: '13px',
-    marginTop: '8px',
   },
 };

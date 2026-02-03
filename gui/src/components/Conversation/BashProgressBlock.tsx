@@ -1,4 +1,5 @@
 import { useRef, forwardRef, useImperativeHandle, useState } from 'react';
+import { Terminal } from 'lucide-react';
 import type { BashProgressContent } from '../../types';
 import { colors } from '../../styles/theme';
 import { CollapsibleBlock, type CollapsibleBlockRef } from './CollapsibleBlock';
@@ -43,7 +44,7 @@ export const BashProgressBlock = forwardRef<BashProgressBlockRef, BashProgressBl
     <CollapsibleBlock
       ref={collapsibleRef}
       title="Bash Output"
-      icon="💻"
+      icon={<Terminal size={14} />}
       summary={summary}
       defaultExpanded={expanded}
       forceExpanded={forceExpanded}

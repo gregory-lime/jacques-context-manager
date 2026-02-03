@@ -1,16 +1,17 @@
 import { colors } from '../styles/theme';
+import { TerminalPanel, SectionHeader } from '../components/ui';
 
 export function Settings() {
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>Settings</h1>
+      <SectionHeader title="Settings" />
       <p style={styles.description}>
         Configure Jacques preferences and integrations.
       </p>
 
       {/* Archive Settings */}
-      <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>Archive Settings</h2>
+      <TerminalPanel title="settings.json" showDots={true}>
+        <h3 style={styles.sectionTitle}>Archive Settings</h3>
 
         <div style={styles.setting}>
           <div style={styles.settingLabel}>Archive Filter</div>
@@ -45,15 +46,15 @@ export function Settings() {
             <span>Auto-archive on session end</span>
           </label>
         </div>
-      </div>
+      </TerminalPanel>
 
       {/* Sources */}
-      <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>Sources</h2>
+      <TerminalPanel title="sources.json" showDots={true}>
+        <h3 style={styles.sectionTitle}>Sources</h3>
         <div style={styles.placeholder}>
           Source configuration coming soon
         </div>
-      </div>
+      </TerminalPanel>
     </div>
   );
 }
@@ -61,30 +62,22 @@ export function Settings() {
 const styles: Record<string, React.CSSProperties> = {
   container: {
     maxWidth: '800px',
-  },
-  title: {
-    fontSize: '24px',
-    fontWeight: 600,
-    color: colors.textPrimary,
-    marginBottom: '8px',
+    padding: '24px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '20px',
   },
   description: {
     fontSize: '14px',
     color: colors.textSecondary,
-    marginBottom: '32px',
-  },
-  section: {
-    marginBottom: '32px',
-    padding: '20px',
-    backgroundColor: colors.bgSecondary,
-    borderRadius: '8px',
-    border: `1px solid ${colors.borderSubtle}`,
+    marginBottom: '8px',
   },
   sectionTitle: {
-    fontSize: '16px',
+    fontSize: '14px',
     fontWeight: 500,
     color: colors.textPrimary,
     marginBottom: '16px',
+    margin: '0 0 16px 0',
   },
   setting: {
     marginBottom: '16px',

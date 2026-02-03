@@ -20,7 +20,6 @@ export function ContextMeter({ metrics }: ContextMeterProps) {
   const percentage = metrics.used_percentage;
   const isEstimate = metrics.is_estimate ?? false;
 
-  // Format tokens
   const formatTokens = (tokens: number): string => {
     if (tokens >= 1000000) {
       return `${(tokens / 1000000).toFixed(1)}M`;
@@ -67,15 +66,15 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '4px',
   },
   bar: {
-    height: '6px',
+    height: '8px',
     backgroundColor: colors.bgElevated,
-    borderRadius: '3px',
+    borderRadius: '4px',
     overflow: 'hidden',
   },
   barFill: {
     height: '100%',
     backgroundColor: colors.progressFill,
-    borderRadius: '3px',
+    borderRadius: '4px',
     transition: 'width 300ms ease',
   },
   barEmpty: {

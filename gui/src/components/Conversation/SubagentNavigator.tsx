@@ -1,3 +1,5 @@
+import { useState, type ReactNode } from 'react';
+import { Search, FileText, Bot, Terminal, ChevronDown, ChevronRight } from 'lucide-react';
 import type { ConversationMessage, AgentProgressContent } from '../../types';
 import { colors } from '../../styles/theme';
 
@@ -18,18 +20,18 @@ interface SubagentInfo {
 /**
  * Get icon and color for agent type
  */
-function getAgentTypeStyle(agentType?: string): { icon: string; color: string; label: string } {
+function getAgentTypeStyle(agentType?: string): { icon: ReactNode; color: string; label: string } {
   switch (agentType?.toLowerCase()) {
     case 'explore':
-      return { icon: '🔍', color: '#60A5FA', label: 'Explore' };
+      return { icon: <Search size={12} />, color: '#60A5FA', label: 'Explore' };
     case 'plan':
-      return { icon: '📋', color: '#34D399', label: 'Plan' };
+      return { icon: <FileText size={12} />, color: '#34D399', label: 'Plan' };
     case 'general-purpose':
-      return { icon: '🤖', color: '#A78BFA', label: 'General' };
+      return { icon: <Bot size={12} />, color: '#A78BFA', label: 'General' };
     case 'bash':
-      return { icon: '💻', color: '#F472B6', label: 'Bash' };
+      return { icon: <Terminal size={12} />, color: '#F472B6', label: 'Bash' };
     default:
-      return { icon: '🤖', color: '#9CA3AF', label: agentType || 'Agent' };
+      return { icon: <Bot size={12} />, color: '#9CA3AF', label: agentType || 'Agent' };
   }
 }
 
@@ -38,6 +40,9 @@ export function SubagentNavigator({
   currentIndex,
   onNavigate,
 }: SubagentNavigatorProps) {
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+
   // Extract all subagents from messages
   const subagents: SubagentInfo[] = [];
 
@@ -98,8 +103,14 @@ export function SubagentNavigator({
 
   return (
     <div style={styles.container}>
-      <div style={styles.header}>Subagents ({subagents.length})</div>
-      <div style={styles.list}>
+      <div style={{ ...styles.header, cursor: 'pointer' }} onClick={() => setCollapsed(!collapsed)}>
+        <span style={styles.headerIcon}><Bot size={14} /></span>
+        <span style={{ flex: 1 }}>Subagents ({subagents.length})</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', color: colors.textMuted }}>
+          {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+        </span>
+      </div>
+      {!collapsed && <div style={styles.list}>
         {sortedTypes.map((type) => {
           const agents = byType.get(type) || [];
           const typeStyle = getAgentTypeStyle(type);
@@ -107,7 +118,9 @@ export function SubagentNavigator({
           return (
             <div key={type} style={styles.typeGroup}>
               <div style={styles.typeHeader}>
-                <span style={{ color: typeStyle.color }}>{typeStyle.icon}</span>
+                <span style={{ color: typeStyle.color, display: 'inline-flex', alignItems: 'center' }}>
+                  {typeStyle.icon}
+                </span>
                 <span style={{ color: typeStyle.color, fontWeight: 500 }}>
                   {typeStyle.label}
                 </span>
@@ -115,6 +128,7 @@ export function SubagentNavigator({
               </div>
               {agents.map((agent) => {
                 const isActive = agent.agentId === activeAgentId;
+                const isHovered = agent.agentId === hoveredId;
                 const preview = getPromptPreview(agent.prompt);
 
                 return (
@@ -123,14 +137,19 @@ export function SubagentNavigator({
                     style={{
                       ...styles.item,
                       ...(isActive ? styles.itemActive : {}),
+                      ...(isHovered && !isActive ? styles.itemHovered : {}),
                     }}
                     onClick={() => onNavigate(agent.messageIndex, agent.contentIndex, agent.agentId)}
+                    onMouseEnter={() => setHoveredId(agent.agentId)}
+                    onMouseLeave={() => setHoveredId(null)}
                     title={agent.prompt}
                     type="button"
                   >
-                    <span style={styles.marker}>
-                      {isActive ? '▶' : '─'}
-                    </span>
+                    <span style={{
+                      ...styles.marker,
+                      backgroundColor: isActive ? colors.accent : 'transparent',
+                      border: isActive ? 'none' : `1px solid ${colors.borderSubtle}`,
+                    }} />
                     <span style={styles.preview}>{preview}</span>
                   </button>
                 );
@@ -138,7 +157,7 @@ export function SubagentNavigator({
             </div>
           );
         })}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -157,11 +176,19 @@ const styles: Record<string, React.CSSProperties> = {
     borderTop: `1px solid ${colors.borderSubtle}`,
   },
   header: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
     padding: '12px 16px',
     fontSize: '12px',
     fontWeight: 600,
     color: colors.textSecondary,
     borderBottom: `1px solid ${colors.borderSubtle}`,
+  },
+  headerIcon: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    color: colors.accent,
   },
   list: {
     flex: 1,
@@ -188,7 +215,8 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '8px',
     width: '100%',
-    padding: '6px 8px',
+    padding: '8px 10px',
+    minHeight: '36px',
     border: 'none',
     backgroundColor: 'transparent',
     borderRadius: '4px',
@@ -203,8 +231,13 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: colors.bgElevated,
     color: colors.accent,
   },
+  itemHovered: {
+    backgroundColor: colors.bgElevated,
+  },
   marker: {
-    fontSize: '10px',
+    width: '6px',
+    height: '6px',
+    borderRadius: '50%',
     flexShrink: 0,
   },
   preview: {

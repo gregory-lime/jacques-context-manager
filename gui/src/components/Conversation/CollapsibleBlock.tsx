@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle, type ReactNode } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { colors } from '../../styles/theme';
 
 interface CollapsibleBlockProps {
   title: string;
-  icon?: string;
+  icon?: ReactNode;
   summary?: string;
   defaultExpanded?: boolean;
   /** Force expand state (controlled mode) */
@@ -20,7 +21,7 @@ export interface CollapsibleBlockRef {
 
 export const CollapsibleBlock = forwardRef<CollapsibleBlockRef, CollapsibleBlockProps>(function CollapsibleBlock({
   title,
-  icon = '▶',
+  icon,
   summary,
   defaultExpanded = false,
   forceExpanded,
@@ -45,6 +46,8 @@ export const CollapsibleBlock = forwardRef<CollapsibleBlockRef, CollapsibleBlock
     },
   }));
 
+  const defaultIcon = <ChevronRight size={14} />;
+
   return (
     <div ref={containerRef} style={styles.container}>
       <button
@@ -56,14 +59,18 @@ export const CollapsibleBlock = forwardRef<CollapsibleBlockRef, CollapsibleBlock
           ...styles.icon,
           transform: isExpanded ? 'rotate(90deg)' : 'none',
         }}>
-          {icon}
+          {icon || defaultIcon}
         </span>
         <span style={styles.title}>{title}</span>
         {!isExpanded && summary && (
           <span style={styles.summary}>{summary}</span>
         )}
       </button>
-      {isExpanded && <div style={styles.content}>{children}</div>}
+      {isExpanded && (
+        <div className="jacques-expand-content" style={styles.content}>
+          {children}
+        </div>
+      )}
     </div>
   );
 });
@@ -81,16 +88,21 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '8px',
     width: '100%',
     padding: '10px 12px',
+    minHeight: '44px',
     backgroundColor: colors.bgElevated,
     border: 'none',
     cursor: 'pointer',
     textAlign: 'left' as const,
     color: colors.textSecondary,
     fontSize: '13px',
+    transition: 'background-color 150ms ease',
   },
   icon: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     transition: 'transform 150ms ease',
-    fontSize: '10px',
+    flexShrink: 0,
   },
   title: {
     fontWeight: 500,

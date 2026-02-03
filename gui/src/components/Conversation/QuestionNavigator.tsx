@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { MessageSquare, ChevronDown, ChevronRight } from 'lucide-react';
 import type { ConversationMessage } from '../../types';
 import { colors } from '../../styles/theme';
 
@@ -12,6 +14,9 @@ export function QuestionNavigator({
   currentIndex,
   onNavigate,
 }: QuestionNavigatorProps) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+
   // Get user questions with their indices
   const questions = messages
     .map((msg, index) => ({ msg, index }))
@@ -35,34 +40,50 @@ export function QuestionNavigator({
 
   return (
     <div style={styles.container}>
-      <div style={styles.header}>Questions ({questions.length})</div>
-      <div style={styles.list}>
-        {questions.map((q, idx) => {
-          const isActive = idx === activeQuestionIdx;
-          const preview = getQuestionPreview(q.msg);
+      <div style={{ ...styles.header, cursor: 'pointer' }} onClick={() => setCollapsed(!collapsed)}>
+        <span style={styles.headerIcon}><MessageSquare size={14} /></span>
+        <span style={{ flex: 1 }}>Questions ({questions.length})</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', color: colors.textMuted }}>
+          {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+        </span>
+      </div>
+      {!collapsed && (
+        <>
+          <div style={styles.list}>
+            {questions.map((q, idx) => {
+              const isActive = idx === activeQuestionIdx;
+              const isHovered = idx === hoveredIndex;
+              const preview = getQuestionPreview(q.msg);
 
-          return (
-            <button
-              key={q.index}
-              style={{
-                ...styles.item,
-                ...(isActive ? styles.itemActive : {}),
-              }}
-              onClick={() => onNavigate(q.index)}
-              title={preview}
-              type="button"
-            >
-              <span style={styles.marker}>
-                {isActive ? '▶' : '─'}
-              </span>
-              <span style={styles.preview}>{preview}</span>
-            </button>
-          );
-        })}
-      </div>
-      <div style={styles.hint}>
-        <span style={styles.key}>[</span> / <span style={styles.key}>]</span> Jump
-      </div>
+              return (
+                <button
+                  key={q.index}
+                  style={{
+                    ...styles.item,
+                    ...(isActive ? styles.itemActive : {}),
+                    ...(isHovered && !isActive ? styles.itemHovered : {}),
+                  }}
+                  onClick={() => onNavigate(q.index)}
+                  onMouseEnter={() => setHoveredIndex(idx)}
+                  onMouseLeave={() => setHoveredIndex(null)}
+                  title={preview}
+                  type="button"
+                >
+                  <span style={{
+                    ...styles.marker,
+                    backgroundColor: isActive ? colors.accent : 'transparent',
+                    border: isActive ? 'none' : `1px solid ${colors.borderSubtle}`,
+                  }} />
+                  <span style={styles.preview}>{preview}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div style={styles.hint}>
+            <span style={styles.key}>[</span> / <span style={styles.key}>]</span> Jump
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -84,11 +105,19 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   header: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
     padding: '12px 16px',
     fontSize: '12px',
     fontWeight: 600,
     color: colors.textSecondary,
     borderBottom: `1px solid ${colors.borderSubtle}`,
+  },
+  headerIcon: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    color: colors.accent,
   },
   list: {
     flex: 1,
@@ -100,7 +129,8 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '8px',
     width: '100%',
-    padding: '8px',
+    padding: '10px 12px',
+    minHeight: '36px',
     border: 'none',
     backgroundColor: 'transparent',
     borderRadius: '4px',
@@ -114,8 +144,13 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: colors.bgElevated,
     color: colors.accent,
   },
+  itemHovered: {
+    backgroundColor: colors.bgElevated,
+  },
   marker: {
-    fontSize: '10px',
+    width: '6px',
+    height: '6px',
+    borderRadius: '50%',
     flexShrink: 0,
   },
   preview: {

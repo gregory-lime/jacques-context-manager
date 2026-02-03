@@ -52,6 +52,14 @@ export const colors = {
   progressFill: '#E67E52',
   /** Empty portion */
   progressEmpty: '#8B9296',
+
+  // === WINDOW CHROME ===
+  /** macOS red dot */
+  dotRed: '#FF5F56',
+  /** macOS yellow dot */
+  dotYellow: '#FFBD2E',
+  /** macOS green dot */
+  dotGreen: '#27C93F',
 } as const;
 
 export type ColorKey = keyof typeof colors;

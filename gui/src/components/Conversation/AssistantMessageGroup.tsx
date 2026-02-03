@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react';
+import { ChevronDown, ChevronRight, Bot, Brain, Wrench, Check, XCircle, FileText } from 'lucide-react';
 import type { ConversationMessage, MessageContent, AgentProgressContent, ToolUseContent } from '../../types';
 import { colors } from '../../styles/theme';
 import { CollapsibleBlock, type CollapsibleBlockRef } from './CollapsibleBlock';
@@ -25,7 +26,7 @@ interface AssistantMessageGroupProps {
 interface ContentIndicator {
   type: 'agent' | 'plan' | 'web_search' | 'bash' | 'mcp';
   label: string;
-  icon: string;
+  icon: ReactNode;
   color: string;
   messageIndex: number;
   contentIndex: number;
@@ -66,7 +67,7 @@ function extractIndicators(messages: ConversationMessage[]): ContentIndicator[] 
           indicators.push({
             type: 'agent',
             label: agentType.charAt(0).toUpperCase() + agentType.slice(1),
-            icon: '🤖',
+            icon: <Bot size={12} />,
             color: '#A78BFA',
             messageIndex: msgIdx,
             contentIndex: contentIdx,
@@ -126,6 +127,7 @@ export function AssistantMessageGroup({
   targetContentId,
 }: AssistantMessageGroupProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [manualCollapse, setManualCollapse] = useState(false);
   const [expandedTarget, setExpandedTarget] = useState<{ msgIdx: number; contentIdx: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRefs = useRef<Map<string, CollapsibleBlockRef | AgentProgressBlockRef | BashProgressBlockRef | null>>(new Map());
@@ -198,20 +200,36 @@ export function AssistantMessageGroup({
     }, 100);
   };
 
-  const showExpanded = isExpanded || allExpanded;
+  const showExpanded = manualCollapse ? false : (isExpanded || allExpanded);
+
+  const handleToggle = () => {
+    if (allExpanded && !manualCollapse) {
+      // User wants to collapse while allExpanded is on — override locally
+      setManualCollapse(true);
+    } else if (allExpanded && manualCollapse) {
+      // User wants to re-expand while allExpanded is on — remove override
+      setManualCollapse(false);
+    } else {
+      setIsExpanded(!isExpanded);
+    }
+  };
+
+  // Reset manual collapse when allExpanded changes
+  useEffect(() => {
+    setManualCollapse(false);
+  }, [allExpanded]);
 
   return (
     <div style={styles.container} ref={containerRef}>
       {/* Header */}
-      <div style={styles.header}>
+      <div
+        style={styles.header}
+        onClick={handleToggle}
+      >
         <div style={styles.headerLeft}>
-          <button
-            type="button"
-            style={styles.expandToggle}
-            onClick={() => setIsExpanded(!isExpanded)}
-          >
-            {showExpanded ? '▼' : '▶'}
-          </button>
+          <span style={styles.expandToggle}>
+            {showExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </span>
           <span style={styles.role}>Claude</span>
 
           {/* Indicators */}
@@ -227,7 +245,7 @@ export function AssistantMessageGroup({
                 }}
                 title={`Jump to ${ind.label}`}
               >
-                {ind.icon} {ind.label}
+                <span style={styles.indicatorIcon}>{ind.icon}</span> {ind.label}
               </button>
             ))}
           </div>
@@ -236,17 +254,17 @@ export function AssistantMessageGroup({
         <div style={styles.headerRight}>
           {stats.thinkingTokens > 0 && (
             <span style={styles.tokenPill} title="Thinking tokens">
-              💭 {formatTokens(stats.thinkingTokens)}
+              <Brain size={10} /> {formatTokens(stats.thinkingTokens)}
             </span>
           )}
           {stats.toolCalls > 0 && (
             <span style={styles.tokenPill} title="Tool calls">
-              🔧 {stats.toolCalls}
+              <Wrench size={10} /> {stats.toolCalls}
             </span>
           )}
           {stats.agentCount > 0 && (
             <span style={styles.tokenPill} title="Agents">
-              🤖 {stats.agentCount}
+              <Bot size={10} /> {stats.agentCount}
             </span>
           )}
           <span style={styles.tokenBadge} title={`~${stats.totalTokens} tokens`}>
@@ -265,7 +283,7 @@ export function AssistantMessageGroup({
 
       {/* Content (when expanded) */}
       {showExpanded && (
-        <div style={styles.content}>
+        <div className="jacques-expand-content" style={styles.content}>
           {messages.map((message, msgIdx) => (
             <div key={message.id} style={styles.messageBlock}>
               {message.content.map((content, contentIdx) => {
@@ -426,7 +444,7 @@ function ContentRenderer({ content, expanded = false, sessionId, contentRef }: C
         <CollapsibleBlock
           ref={contentRef}
           title="Thinking"
-          icon="💭"
+          icon={<Brain size={14} />}
           summary={`${formatTokens(thinkingTokens)} tok`}
           defaultExpanded={expanded}
         >
@@ -444,7 +462,7 @@ function ContentRenderer({ content, expanded = false, sessionId, contentRef }: C
           <CollapsibleBlock
             ref={contentRef}
             title={planInfo.title || 'Plan'}
-            icon="📝"
+            icon={<FileText size={14} />}
             summary={`${formatTokens(planTokens)} tok`}
             defaultExpanded={expanded}
             headerStyle={{ backgroundColor: 'rgba(52, 211, 153, 0.1)', borderLeft: '3px solid #34D399' }}
@@ -463,7 +481,7 @@ function ContentRenderer({ content, expanded = false, sessionId, contentRef }: C
         <CollapsibleBlock
           ref={contentRef}
           title={`Tool: ${content.name}`}
-          icon="🔧"
+          icon={<Wrench size={14} />}
           summary={`${getToolSummary(content.name, content.input)} · ${formatTokens(toolTokens)} tok`}
           defaultExpanded={expanded}
         >
@@ -480,7 +498,7 @@ function ContentRenderer({ content, expanded = false, sessionId, contentRef }: C
         <CollapsibleBlock
           ref={contentRef}
           title="Tool Result"
-          icon={content.is_error ? '❌' : '✓'}
+          icon={content.is_error ? <XCircle size={14} /> : <Check size={14} />}
           summary={content.is_error ? 'Error' : `${formatTokens(resultTokens)} tok`}
           defaultExpanded={expanded}
         >
@@ -601,9 +619,11 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '12px 16px',
+    minHeight: '44px',
     backgroundColor: colors.bgElevated,
     borderBottom: `1px solid ${colors.borderSubtle}`,
     cursor: 'pointer',
+    transition: 'background-color 150ms ease',
   },
   headerLeft: {
     display: 'flex',
@@ -611,12 +631,9 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '12px',
   },
   expandToggle: {
-    background: 'none',
-    border: 'none',
+    display: 'inline-flex',
+    alignItems: 'center',
     color: colors.textMuted,
-    fontSize: '12px',
-    cursor: 'pointer',
-    padding: '4px',
   },
   role: {
     fontWeight: 600,
@@ -628,6 +645,9 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: 'wrap' as const,
   },
   indicator: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
     padding: '2px 8px',
     borderRadius: '4px',
     fontSize: '11px',
@@ -636,12 +656,19 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     transition: 'all 150ms ease',
   },
+  indicatorIcon: {
+    display: 'inline-flex',
+    alignItems: 'center',
+  },
   headerRight: {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
   },
   tokenPill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
     fontSize: '10px',
     color: colors.textMuted,
     backgroundColor: colors.bgSecondary,
@@ -701,7 +728,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.textSecondary,
   },
   planContent: {
-    padding: '8px 0',
+    padding: 0,
     fontSize: '14px',
     lineHeight: 1.6,
   },

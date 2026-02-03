@@ -1,3 +1,4 @@
+import { Check, Loader } from 'lucide-react';
 import type { MCPProgressContent } from '../../types';
 import { colors } from '../../styles/theme';
 
@@ -6,12 +7,17 @@ interface MCPProgressBlockProps {
 }
 
 export function MCPProgressBlock({ content }: MCPProgressBlockProps) {
-  const statusIcon = content.status === 'completed' ? '✓' : '◐';
-  const statusColor = content.status === 'completed' ? colors.success : colors.accent;
+  const isCompleted = content.status === 'completed';
+  const statusColor = isCompleted ? colors.success : colors.accent;
 
   return (
     <div style={styles.container}>
-      <span style={{ ...styles.icon, color: statusColor }}>{statusIcon}</span>
+      <span style={{ ...styles.icon, color: statusColor }}>
+        {isCompleted
+          ? <Check size={14} />
+          : <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} />
+        }
+      </span>
       <span style={styles.label}>MCP</span>
       {content.serverName && (
         <span style={styles.server}>{content.serverName}</span>
@@ -35,7 +41,8 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: '8px',
   },
   icon: {
-    fontSize: '12px',
+    display: 'inline-flex',
+    alignItems: 'center',
   },
   label: {
     fontSize: '12px',

@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Outlet, NavLink, useLocation, Link } from 'react-router-dom';
+import {
+  LayoutDashboard,
+  FolderOpen,
+  MessageSquare,
+  Archive,
+  BookOpen,
+  Settings,
+  Terminal,
+} from 'lucide-react';
 import { colors } from '../styles/theme';
 import { ProjectSelector } from './ProjectSelector';
 import { useJacquesClient } from '../hooks/useJacquesClient';
@@ -7,13 +16,14 @@ import { useProjectScope } from '../hooks/useProjectScope.js';
 import { getSourcesStatus } from '../api';
 import type { SourcesStatus } from '../api';
 import { MultiLogPanel } from './MultiLogPanel';
+import { SectionHeader } from './ui';
 
 const navItems = [
-  { path: '/', label: 'Dashboard', icon: '◉' },
-  { path: '/project', label: 'Project', icon: '▸' },
-  { path: '/conversations', label: 'Conversations', icon: '▸' },
-  { path: '/archive', label: 'Archive', icon: '▸' },
-  { path: '/context', label: 'Context', icon: '▸' },
+  { path: '/', label: 'Dashboard', Icon: LayoutDashboard },
+  { path: '/project', label: 'Project', Icon: FolderOpen },
+  { path: '/conversations', label: 'Conversations', Icon: MessageSquare },
+  { path: '/archive', label: 'Archive', Icon: Archive },
+  { path: '/context', label: 'Context', Icon: BookOpen },
 ];
 
 export function Layout() {
@@ -26,6 +36,15 @@ export function Layout() {
     notion: { connected: false },
   });
 
+  const [showLogs, setShowLogs] = useState(() => {
+    const saved = localStorage.getItem('jacques-show-logs');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('jacques-show-logs', String(showLogs));
+  }, [showLogs]);
+
   // Load source status
   useEffect(() => {
     async function loadSourceStatus() {
@@ -34,11 +53,10 @@ export function Layout() {
         setSourceStatus(status);
       } catch (error) {
         console.error('Failed to load source status:', error);
-        // Keep default disconnected state on error
       }
     }
     loadSourceStatus();
-  }, [location.pathname]); // Refresh when navigating
+  }, [location.pathname]);
 
   return (
     <div style={styles.container}>
@@ -52,6 +70,14 @@ export function Layout() {
             style={styles.mascot}
           />
           <span style={styles.logoText}>Jacques</span>
+        </div>
+
+        {/* Block art separator */}
+        <div style={styles.blockSeparator}>
+          <div style={{
+            height: '1px',
+            background: `linear-gradient(90deg, transparent, ${colors.accent}40, transparent)`,
+          }} />
         </div>
 
         {/* Project Scope Selector */}
@@ -77,7 +103,8 @@ export function Layout() {
                   ...(isActive ? styles.navLinkActive : {}),
                 }}
               >
-                <span style={styles.navIcon}>{item.icon}</span>
+                {isActive && <span style={styles.activeIndicator} />}
+                <item.Icon size={16} style={{ flexShrink: 0, opacity: isActive ? 1 : 0.6 }} />
                 <span>{item.label}</span>
               </NavLink>
             );
@@ -87,92 +114,83 @@ export function Layout() {
         {/* Sources Section */}
         <div style={styles.sourcesSection}>
           <Link to="/sources" style={styles.sectionHeaderLink}>
-            <div style={styles.sectionHeader}>SOURCES</div>
+            <SectionHeader title="Sources" accentColor={colors.accent} />
           </Link>
-          <Link
-            to="/sources"
-            style={{
-              ...styles.sourceItem,
-              color: sourceStatus.obsidian.connected ? colors.textSecondary : colors.textMuted,
-            }}
-          >
-            <span style={styles.navIcon}>▸</span>
-            <span>Obsidian</span>
-            <span
+          {[
+            { key: 'obsidian' as const, label: 'Obsidian' },
+            { key: 'googleDocs' as const, label: 'Google Docs' },
+            { key: 'notion' as const, label: 'Notion' },
+          ].map(({ key, label }) => (
+            <Link
+              key={key}
+              to="/sources"
               style={{
-                ...styles.statusDot,
-                color: sourceStatus.obsidian.connected ? colors.success : colors.textMuted,
+                ...styles.sourceItem,
+                color: sourceStatus[key].connected ? colors.textSecondary : colors.textMuted,
               }}
             >
-              {sourceStatus.obsidian.connected ? '●' : '○'}
-            </span>
-          </Link>
-          <Link
-            to="/sources"
-            style={{
-              ...styles.sourceItem,
-              color: sourceStatus.googleDocs.connected ? colors.textSecondary : colors.textMuted,
-            }}
-          >
-            <span style={styles.navIcon}>▸</span>
-            <span>Google Docs</span>
-            <span
-              style={{
-                ...styles.statusDot,
-                color: sourceStatus.googleDocs.connected ? colors.success : colors.textMuted,
-              }}
-            >
-              {sourceStatus.googleDocs.connected ? '●' : '○'}
-            </span>
-          </Link>
-          <Link
-            to="/sources"
-            style={{
-              ...styles.sourceItem,
-              color: sourceStatus.notion.connected ? colors.textSecondary : colors.textMuted,
-            }}
-          >
-            <span style={styles.navIcon}>▸</span>
-            <span>Notion</span>
-            <span
-              style={{
-                ...styles.statusDot,
-                color: sourceStatus.notion.connected ? colors.success : colors.textMuted,
-              }}
-            >
-              {sourceStatus.notion.connected ? '●' : '○'}
-            </span>
-          </Link>
+              <span>{label}</span>
+              <span
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  backgroundColor: sourceStatus[key].connected ? colors.success : colors.textMuted,
+                  opacity: sourceStatus[key].connected ? 1 : 0.4,
+                  marginLeft: 'auto',
+                  flexShrink: 0,
+                }}
+              />
+            </Link>
+          ))}
         </div>
 
         {/* Footer */}
         <div style={styles.sidebarFooter}>
-          <NavLink
-            to="/settings"
-            style={{
-              ...styles.navLink,
-              ...(location.pathname === '/settings' ? styles.navLinkActive : {}),
-            }}
-          >
-            <span style={styles.navIcon}>⚙</span>
-            <span>Settings</span>
-          </NavLink>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <NavLink
+              to="/settings"
+              style={{
+                ...styles.navLink,
+                ...(location.pathname === '/settings' ? styles.navLinkActive : {}),
+                flex: 1,
+              }}
+            >
+              {location.pathname === '/settings' && <span style={styles.activeIndicator} />}
+              <Settings size={16} style={{ flexShrink: 0, opacity: location.pathname === '/settings' ? 1 : 0.6 }} />
+              <span>Settings</span>
+            </NavLink>
+
+            <button
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 32, height: 32, border: 'none', borderRadius: '6px',
+                cursor: 'pointer', transition: 'all 150ms ease', flexShrink: 0,
+                backgroundColor: showLogs ? colors.bgElevated : 'transparent',
+                color: showLogs ? colors.accent : colors.textMuted,
+              }}
+              onClick={() => setShowLogs(s => !s)}
+              title={showLogs ? 'Hide logs' : 'Show logs'}
+            >
+              <Terminal size={16} />
+            </button>
+          </div>
         </div>
       </aside>
 
-      {/* Content Area - flex column for main + log panel */}
+      {/* Content Area */}
       <div style={styles.contentArea}>
-        {/* Main Content */}
         <main style={styles.main}>
           <Outlet />
         </main>
 
-        {/* Multi-Log Panel */}
-        <MultiLogPanel
-          serverLogs={serverLogs}
-          apiLogs={apiLogs}
-          claudeOperations={claudeOperations}
-        />
+        {showLogs && (
+          <MultiLogPanel
+            serverLogs={serverLogs}
+            apiLogs={apiLogs}
+            claudeOperations={claudeOperations}
+          />
+        )}
       </div>
     </div>
   );
@@ -190,6 +208,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     minWidth: 0,
     overflow: 'hidden',
+    position: 'relative',
   },
   sidebar: {
     width: '240px',
@@ -204,9 +223,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
-    padding: '0 16px 16px',
-    borderBottom: `1px solid ${colors.borderSubtle}`,
-    marginBottom: '16px',
+    padding: '0 16px 12px',
   },
   mascot: {
     width: '32px',
@@ -218,44 +235,50 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     color: colors.accent,
   },
+  blockSeparator: {
+    padding: '0 16px 16px',
+  },
   nav: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '4px',
+    gap: '2px',
     padding: '0 8px',
   },
   navLink: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    gap: '10px',
     padding: '8px 12px',
     borderRadius: '6px',
     color: colors.textSecondary,
     textDecoration: 'none',
     transition: 'all 150ms ease',
+    fontSize: '13px',
+    position: 'relative' as const,
   },
   navLinkActive: {
     backgroundColor: colors.bgElevated,
     color: colors.accent,
   },
-  navIcon: {
-    width: '16px',
-    textAlign: 'center' as const,
+  activeIndicator: {
+    position: 'absolute' as const,
+    left: '-8px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    width: '2px',
+    height: '16px',
+    backgroundColor: colors.accent,
+    borderRadius: '0 2px 2px 0',
   },
   sourcesSection: {
     marginTop: 'auto',
-    padding: '16px 8px',
+    padding: '16px 8px 0',
     borderTop: `1px solid ${colors.borderSubtle}`,
-  },
-  sectionHeader: {
-    fontSize: '11px',
-    fontWeight: 600,
-    color: colors.textMuted,
-    padding: '0 12px 8px',
-    letterSpacing: '0.05em',
   },
   sectionHeaderLink: {
     textDecoration: 'none',
+    display: 'block',
+    padding: '0 12px',
   },
   sourceItem: {
     display: 'flex',
@@ -266,20 +289,17 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '13px',
     textDecoration: 'none',
     cursor: 'pointer',
-  },
-  statusDot: {
-    marginLeft: 'auto',
-    color: colors.success,
-    fontSize: '8px',
+    borderRadius: '4px',
+    transition: 'background-color 150ms ease',
   },
   sidebarFooter: {
-    padding: '16px 8px 0',
+    padding: '12px 8px 0',
     borderTop: `1px solid ${colors.borderSubtle}`,
     marginTop: '16px',
   },
   main: {
     flex: 1,
-    padding: '24px',
+    padding: 0,
     overflow: 'auto',
     minHeight: 0,
   },

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { FileText, PenTool, Loader, X } from 'lucide-react';
 import { colors } from '../../styles/theme';
 import type { PlanInfo } from './PlanNavigator';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -69,7 +70,9 @@ export function PlanViewer({ plan, sessionId, onClose }: PlanViewerProps) {
   }, [onClose]);
 
   const sourceLabel = plan.source === 'embedded' ? 'Embedded Plan' : 'Written Plan';
-  const sourceIcon = plan.source === 'embedded' ? '📋' : '📝';
+  const sourceIcon = plan.source === 'embedded'
+    ? <FileText size={24} />
+    : <PenTool size={24} />;
 
   return (
     <div style={styles.overlay} onClick={onClose}>
@@ -89,7 +92,7 @@ export function PlanViewer({ plan, sessionId, onClose }: PlanViewerProps) {
             </div>
           </div>
           <button style={styles.closeButton} onClick={onClose} type="button">
-            ×
+            <X size={20} />
           </button>
         </div>
 
@@ -97,7 +100,7 @@ export function PlanViewer({ plan, sessionId, onClose }: PlanViewerProps) {
         <div style={styles.content}>
           {loading && (
             <div style={styles.loading}>
-              <span style={styles.spinner}>◐</span>
+              <Loader size={16} style={{ animation: 'spin 1s linear infinite' }} />
               Loading plan content...
             </div>
           )}
@@ -164,7 +167,9 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '12px',
   },
   sourceIcon: {
-    fontSize: '24px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    color: colors.textMuted,
     marginTop: '2px',
   },
   title: {
@@ -184,13 +189,16 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '11px',
   },
   closeButton: {
-    padding: '4px 8px',
-    fontSize: '24px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '4px',
     color: colors.textMuted,
     backgroundColor: 'transparent',
     border: 'none',
     cursor: 'pointer',
-    lineHeight: 1,
+    borderRadius: '4px',
+    transition: 'color 150ms ease',
   },
   content: {
     flex: 1,
@@ -206,10 +214,6 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '48px',
     color: colors.textMuted,
     fontSize: '14px',
-  },
-  spinner: {
-    display: 'inline-block',
-    animation: 'spin 1s linear infinite',
   },
   error: {
     padding: '16px',
