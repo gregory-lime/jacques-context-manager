@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Session, ClaudeOperation, ApiLog } from '../types';
 import { toastStore } from '../components/ui/ToastContainer';
+import { notificationStore, type NotificationItem, type NotificationCategory } from '../components/ui/NotificationStore';
 
 // WebSocket URL - the GUI connects to the Jacques server
 // In production (served from HTTP API), we're on port 4243, WebSocket is on 4242
@@ -36,6 +37,7 @@ class BrowserJacquesClient {
   public onApiLog?: (log: ApiLog) => void;
   public onHandoffReady?: (sessionId: string, path: string) => void;
   public onFocusTerminalResult?: (sessionId: string, success: boolean, method: string, error?: string) => void;
+  public onNotificationFired?: (notification: NotificationItem) => void;
 
   connect() {
     try {
@@ -140,6 +142,11 @@ class BrowserJacquesClient {
           message.success as boolean,
           message.method as string,
           message.error as string | undefined,
+        );
+        break;
+      case 'notification_fired':
+        this.onNotificationFired?.(
+          message.notification as unknown as NotificationItem,
         );
         break;
     }
@@ -360,6 +367,19 @@ export function useJacquesClient(): UseJacquesClientReturn {
         body: `Generated ${filename}`,
         priority: 'medium',
         category: 'handoff',
+      });
+    };
+
+    jacquesClient.onNotificationFired = (notification: NotificationItem) => {
+      // Push server-detected notifications to the persistent notification store
+      notificationStore.push({
+        id: notification.id,
+        title: notification.title,
+        body: notification.body,
+        priority: notification.priority,
+        category: notification.category as NotificationCategory,
+        timestamp: notification.timestamp,
+        sessionId: notification.sessionId,
       });
     };
 

@@ -5,6 +5,7 @@
 import { EventHandler } from './event-handler.js';
 import { SessionRegistry } from '../session-registry.js';
 import { BroadcastService } from '../services/broadcast-service.js';
+import { NotificationService } from '../services/notification-service.js';
 import { HandoffWatcher } from '../watchers/handoff-watcher.js';
 import { createLogger } from '../logging/logger-factory.js';
 import type {
@@ -54,22 +55,39 @@ class MockHandoffWatcher {
   }
 }
 
+// Mock NotificationService
+class MockNotificationService {
+  public contextUpdateCalls: Session[] = [];
+  public sessionRemovedCalls: string[] = [];
+
+  onContextUpdate(session: Session): void {
+    this.contextUpdateCalls.push(session);
+  }
+
+  onSessionRemoved(sessionId: string): void {
+    this.sessionRemovedCalls.push(sessionId);
+  }
+}
+
 describe('EventHandler', () => {
   let eventHandler: EventHandler;
   let registry: SessionRegistry;
   let mockBroadcastService: MockBroadcastService;
   let mockHandoffWatcher: MockHandoffWatcher;
+  let mockNotificationService: MockNotificationService;
   const silentLogger = createLogger({ silent: true });
 
   beforeEach(() => {
     registry = new SessionRegistry({ silent: true });
     mockBroadcastService = new MockBroadcastService();
     mockHandoffWatcher = new MockHandoffWatcher();
+    mockNotificationService = new MockNotificationService();
 
     eventHandler = new EventHandler({
       registry,
       broadcastService: mockBroadcastService as unknown as BroadcastService,
       handoffWatcher: mockHandoffWatcher as unknown as HandoffWatcher,
+      notificationService: mockNotificationService as unknown as NotificationService,
       logger: silentLogger,
     });
   });
@@ -264,6 +282,65 @@ describe('EventHandler', () => {
 
       // Verify removal was broadcast
       expect(mockBroadcastService.sessionRemovedWithFocusCalls).toContain('test-session');
+    });
+  });
+
+  describe('notification service integration', () => {
+    it('should call notificationService.onContextUpdate on context_update', () => {
+      // Register session first
+      const startEvent: SessionStartEvent = {
+        event: 'session_start',
+        timestamp: Date.now(),
+        session_id: 'test-session',
+        session_title: null,
+        transcript_path: null,
+        cwd: '/test',
+        project: 'test',
+        terminal: null,
+        terminal_key: 'TTY:/dev/ttys001',
+      };
+      eventHandler.handleEvent(startEvent);
+
+      const contextEvent: ContextUpdateEvent = {
+        event: 'context_update',
+        timestamp: Date.now() + 1000,
+        session_id: 'test-session',
+        used_percentage: 55,
+        remaining_percentage: 45,
+        context_window_size: 200000,
+        model: 'claude-opus-4-1',
+        cwd: '/test',
+      };
+      eventHandler.handleEvent(contextEvent);
+
+      expect(mockNotificationService.contextUpdateCalls).toHaveLength(1);
+      expect(mockNotificationService.contextUpdateCalls[0].session_id).toBe('test-session');
+    });
+
+    it('should call notificationService.onSessionRemoved on session_end', () => {
+      // Register session first
+      const startEvent: SessionStartEvent = {
+        event: 'session_start',
+        timestamp: Date.now(),
+        session_id: 'test-session',
+        session_title: null,
+        transcript_path: null,
+        cwd: '/test',
+        project: 'test',
+        terminal: null,
+        terminal_key: 'TTY:/dev/ttys001',
+      };
+      eventHandler.handleEvent(startEvent);
+
+      const endEvent: SessionEndEvent = {
+        event: 'session_end',
+        timestamp: Date.now() + 1000,
+        session_id: 'test-session',
+        terminal_pid: 12345,
+      };
+      eventHandler.handleEvent(endEvent);
+
+      expect(mockNotificationService.sessionRemovedCalls).toContain('test-session');
     });
   });
 

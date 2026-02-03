@@ -16,6 +16,7 @@ import type {
 } from '../types.js';
 import type { SessionRegistry } from '../session-registry.js';
 import type { BroadcastService } from '../services/broadcast-service.js';
+import type { NotificationService } from '../services/notification-service.js';
 import type { HandoffWatcher } from '../watchers/handoff-watcher.js';
 import type { Logger } from '../logging/logger-factory.js';
 import { createLogger } from '../logging/logger-factory.js';
@@ -30,6 +31,8 @@ export interface EventHandlerConfig {
   broadcastService: BroadcastService;
   /** Handoff watcher for file watching */
   handoffWatcher: HandoffWatcher;
+  /** Notification service for desktop + in-app notifications */
+  notificationService?: NotificationService;
   /** Optional logger */
   logger?: Logger;
 }
@@ -45,12 +48,14 @@ export class EventHandler {
   private registry: SessionRegistry;
   private broadcastService: BroadcastService;
   private handoffWatcher: HandoffWatcher;
+  private notificationService?: NotificationService;
   private logger: Logger;
 
   constructor(config: EventHandlerConfig) {
     this.registry = config.registry;
     this.broadcastService = config.broadcastService;
     this.handoffWatcher = config.handoffWatcher;
+    this.notificationService = config.notificationService;
     this.logger = config.logger ?? createLogger({ silent: true });
   }
 
@@ -119,6 +124,7 @@ export class EventHandler {
     const session = this.registry.updateContext(event);
     if (session) {
       this.broadcastService.broadcastSessionWithFocus(session);
+      this.notificationService?.onContextUpdate(session);
     }
   }
 
@@ -145,5 +151,6 @@ export class EventHandler {
 
     this.registry.unregisterSession(event.session_id);
     this.broadcastService.broadcastSessionRemovedWithFocus(event.session_id);
+    this.notificationService?.onSessionRemoved(event.session_id);
   }
 }

@@ -12,6 +12,7 @@ import { promises as fsPromises } from 'fs';
 import { homedir } from 'os';
 import { join, extname, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
+import type { NotificationService } from './services/notification-service.js';
 import {
   getArchiveStats,
   listAllManifests,
@@ -72,6 +73,8 @@ export interface HttpApiOptions {
   silent?: boolean;
   /** Callback for broadcasting API logs to WebSocket clients */
   onApiLog?: (log: ApiLog) => void;
+  /** Notification service for managing desktop notifications */
+  notificationService?: NotificationService;
 }
 
 export interface HttpApiServer {
@@ -184,7 +187,7 @@ function sendJson(res: ServerResponse, status: number, data: unknown): void {
   res.writeHead(status, {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   });
   res.end(JSON.stringify(data));
@@ -196,7 +199,7 @@ function sendJson(res: ServerResponse, status: number, data: unknown): void {
 function handleCors(res: ServerResponse): void {
   res.writeHead(204, {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   });
   res.end();
@@ -255,7 +258,7 @@ function serveStaticFile(res: ServerResponse, filePath: string): boolean {
  * Create and start the HTTP API server
  */
 export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpApiServer> {
-  const { port = 4243, silent = false, onApiLog } = options;
+  const { port = 4243, silent = false, onApiLog, notificationService } = options;
   const log = silent ? () => {} : console.log.bind(console);
 
   // Check if GUI is built
@@ -921,6 +924,44 @@ export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpA
       } catch (error) {
         sendJson(res, 500, { error: 'Failed to get plan' });
       }
+      return;
+    }
+
+    // === Notification API Routes ===
+
+    // Route: GET /api/notifications/settings
+    if (method === 'GET' && url === '/api/notifications/settings') {
+      if (!notificationService) {
+        sendJson(res, 503, { error: 'Notification service not available' });
+        return;
+      }
+      sendJson(res, 200, notificationService.getSettings());
+      return;
+    }
+
+    // Route: PUT /api/notifications/settings
+    if (method === 'PUT' && url === '/api/notifications/settings') {
+      if (!notificationService) {
+        sendJson(res, 503, { error: 'Notification service not available' });
+        return;
+      }
+      const body = await parseBody<Record<string, unknown>>(req);
+      if (!body) {
+        sendJson(res, 400, { error: 'Invalid request body' });
+        return;
+      }
+      const updated = notificationService.updateSettings(body);
+      sendJson(res, 200, updated);
+      return;
+    }
+
+    // Route: GET /api/notifications
+    if (method === 'GET' && url === '/api/notifications') {
+      if (!notificationService) {
+        sendJson(res, 503, { error: 'Notification service not available' });
+        return;
+      }
+      sendJson(res, 200, { notifications: notificationService.getHistory() });
       return;
     }
 

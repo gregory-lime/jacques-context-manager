@@ -435,6 +435,80 @@ export interface FocusTerminalResultMessage {
   error?: string;
 }
 
+// ============================================================
+// Notification System
+// ============================================================
+
+/**
+ * Notification category for server-side notifications
+ */
+export type NotificationCategory =
+  | 'context'
+  | 'operation'
+  | 'plan'
+  | 'auto-compact'
+  | 'handoff';
+
+/**
+ * Server-side notification settings
+ * Persisted in ~/.jacques/config.json under "notifications"
+ */
+export interface NotificationSettings {
+  /** Whether desktop (OS) notifications are enabled */
+  enabled: boolean;
+  /** Per-category toggles */
+  categories: Record<NotificationCategory, boolean>;
+  /** Minimum tokens for a "large operation" notification */
+  largeOperationThreshold: number;
+  /** Context percentage thresholds that trigger notifications */
+  contextThresholds: number[];
+}
+
+/**
+ * A fired notification item
+ */
+export interface NotificationItem {
+  /** Unique notification ID */
+  id: string;
+  /** Notification category */
+  category: NotificationCategory;
+  /** Short title */
+  title: string;
+  /** Longer description */
+  body: string;
+  /** Priority level */
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  /** When the notification was created */
+  timestamp: number;
+  /** Associated session ID, if any */
+  sessionId?: string;
+}
+
+/**
+ * Notification settings message (server → client)
+ */
+export interface NotificationSettingsMessage {
+  type: 'notification_settings';
+  settings: NotificationSettings;
+}
+
+/**
+ * Notification fired message (server → client)
+ * Sent when the server detects and fires a notification
+ */
+export interface NotificationFiredMessage {
+  type: 'notification_fired';
+  notification: NotificationItem;
+}
+
+/**
+ * Client request to update notification settings
+ */
+export interface UpdateNotificationSettingsRequest {
+  type: 'update_notification_settings';
+  settings: Partial<NotificationSettings>;
+}
+
 /**
  * API log message
  * Broadcasts HTTP API requests to GUI for debugging
@@ -470,7 +544,9 @@ export type ServerMessage =
   | HandoffContextErrorMessage
   | ClaudeOperationMessage
   | ApiLogMessage
-  | FocusTerminalResultMessage;
+  | FocusTerminalResultMessage
+  | NotificationSettingsMessage
+  | NotificationFiredMessage;
 
 /**
  * Client request to select a session
@@ -522,7 +598,8 @@ export type ClientMessage =
   | TriggerActionRequest
   | ToggleAutoCompactRequest
   | GetHandoffContextRequest
-  | FocusTerminalRequest;
+  | FocusTerminalRequest
+  | UpdateNotificationSettingsRequest;
 
 // ============================================================
 // Configuration

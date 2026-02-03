@@ -14,6 +14,7 @@ import { startLogInterception, stopLogInterception, addLogListener } from './log
 import { ServerConfig } from './config/config.js';
 import { createLogger, type Logger } from './logging/logger-factory.js';
 import { BroadcastService } from './services/broadcast-service.js';
+import { NotificationService } from './services/notification-service.js';
 import { HandoffWatcher } from './watchers/handoff-watcher.js';
 import { EventHandler } from './handlers/event-handler.js';
 import type {
@@ -25,6 +26,8 @@ import type {
   GetHandoffContextRequest,
   FocusTerminalRequest,
   FocusTerminalResultMessage,
+  UpdateNotificationSettingsRequest,
+  NotificationSettingsMessage,
 } from './types.js';
 import { WebSocket } from 'ws';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
@@ -98,6 +101,18 @@ export async function startEmbeddedServer(
   // Create handoff watcher
   const handoffWatcher = new HandoffWatcher({
     handoffFilename: ServerConfig.handoffFilename,
+    broadcast: (msg) => {
+      wsServer.broadcast(msg);
+      // Also notify the notification service about handoff_ready
+      if (msg.type === 'handoff_ready') {
+        notificationService.onHandoffReady(msg.session_id, msg.path);
+      }
+    },
+    logger,
+  });
+
+  // Create notification service
+  const notificationService = new NotificationService({
     broadcast: (msg) => wsServer.broadcast(msg),
     logger,
   });
@@ -107,6 +122,7 @@ export async function startEmbeddedServer(
     registry,
     broadcastService,
     handoffWatcher,
+    notificationService,
     logger,
   });
 
@@ -124,6 +140,14 @@ export async function startEmbeddedServer(
   ClaudeOperationLogger.onOperation = (op) => {
     logger.log(`Claude operation: ${op.operation} (${op.inputTokens} in, ${op.outputTokens} out, ${op.durationMs}ms)`);
     wsServer.broadcastClaudeOperation(op);
+    // Also check for large operation notifications
+    notificationService.onClaudeOperation({
+      id: op.id,
+      operation: op.operation,
+      phase: op.phase,
+      totalTokens: op.totalTokens,
+      userPromptPreview: op.userPromptPreview,
+    });
   };
 
   /**
@@ -151,6 +175,10 @@ export async function startEmbeddedServer(
 
       case 'focus_terminal':
         handleFocusTerminal(ws, message as FocusTerminalRequest);
+        break;
+
+      case 'update_notification_settings':
+        handleUpdateNotificationSettings(ws, message as UpdateNotificationSettingsRequest);
         break;
 
       default:
@@ -347,6 +375,24 @@ export async function startEmbeddedServer(
     }
   }
 
+  /**
+   * Handle update notification settings request
+   */
+  function handleUpdateNotificationSettings(
+    ws: WebSocket,
+    request: UpdateNotificationSettingsRequest
+  ): void {
+    const updated = notificationService.updateSettings(request.settings);
+    const response: NotificationSettingsMessage = {
+      type: 'notification_settings',
+      settings: updated,
+    };
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(response));
+    }
+    logger.log(`Notification settings updated: desktop=${updated.enabled}`);
+  }
+
   // Start log interception for broadcasting to GUI
   startLogInterception();
 
@@ -375,6 +421,7 @@ export async function startEmbeddedServer(
       onApiLog: (log) => {
         wsServer.broadcastApiLog(log);
       },
+      notificationService,
     });
 
     // Start stale session cleanup

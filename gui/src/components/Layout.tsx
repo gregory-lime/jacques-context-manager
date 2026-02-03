@@ -16,7 +16,7 @@ import { useProjectScope } from '../hooks/useProjectScope.js';
 import { getSourcesStatus } from '../api';
 import type { SourcesStatus } from '../api';
 import { MultiLogPanel } from './MultiLogPanel';
-import { SectionHeader, ToastContainer } from './ui';
+import { SectionHeader, ToastContainer, NotificationCenter } from './ui';
 import { NotificationProvider } from '../hooks/useNotifications';
 import { useSessionBadges } from '../hooks/useSessionBadges';
 
@@ -172,6 +172,8 @@ export function Layout() {
               <Settings size={16} style={{ flexShrink: 0, opacity: location.pathname === '/settings' ? 1 : 0.6 }} />
               <span>Settings</span>
             </NavLink>
+
+            <NotificationCenter />
 
             <button
               style={{

@@ -28,6 +28,10 @@ export {
   getSubagentFromSession,
   getSessionBadges,
   rebuildSessionIndex,
+  // Notification API
+  getNotificationSettings,
+  updateNotificationSettings,
+  getNotificationHistory,
 } from './config';
 
 export type {
@@ -55,4 +59,7 @@ export type {
   SubagentData,
   SessionBadges,
   RebuildProgress,
+  // Notification types
+  ServerNotificationSettings,
+  ServerNotificationItem,
 } from './config';

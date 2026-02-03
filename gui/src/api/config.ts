@@ -430,6 +430,66 @@ export async function listSessionSubagents(sessionId: string): Promise<{
 }
 
 // ============================================================
+// Notification API
+// ============================================================
+
+export interface ServerNotificationSettings {
+  enabled: boolean;
+  categories: Record<string, boolean>;
+  largeOperationThreshold: number;
+  contextThresholds: number[];
+}
+
+export interface ServerNotificationItem {
+  id: string;
+  category: string;
+  title: string;
+  body: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  timestamp: number;
+  sessionId?: string;
+}
+
+/**
+ * Get server-side notification settings
+ */
+export async function getNotificationSettings(): Promise<ServerNotificationSettings> {
+  const response = await fetch(`${API_URL}/notifications/settings`);
+  if (!response.ok) {
+    throw new Error(`Failed to get notification settings: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Update server-side notification settings
+ */
+export async function updateNotificationSettings(
+  patch: Partial<ServerNotificationSettings>
+): Promise<ServerNotificationSettings> {
+  const response = await fetch(`${API_URL}/notifications/settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update notification settings: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Get notification history from server
+ */
+export async function getNotificationHistory(): Promise<{ notifications: ServerNotificationItem[] }> {
+  const response = await fetch(`${API_URL}/notifications`);
+  if (!response.ok) {
+    throw new Error(`Failed to get notification history: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+// ============================================================
 // Sessions API (Hybrid Architecture - reads JSONL directly)
 // ============================================================
 

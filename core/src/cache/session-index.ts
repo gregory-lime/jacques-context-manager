@@ -98,6 +98,8 @@ export interface SessionEntry {
     description: string;
     /** Timestamp when agent was called */
     timestamp: string;
+    /** Estimated total token cost (input + output) from subagent JSONL */
+    tokenCost?: number;
   }>;
   /** Web search references */
   webSearches?: Array<{
@@ -418,6 +420,8 @@ interface ExploreAgentRef {
   id: string;
   description: string;
   timestamp: string;
+  /** Estimated total token cost (input + output) from subagent JSONL */
+  tokenCost?: number;
 }
 
 /**
@@ -430,16 +434,26 @@ interface WebSearchRef {
 }
 
 /**
- * Extract explore agents and web searches from entries
+ * Extract explore agents and web searches from entries.
+ * For explore agents, computes token cost from their subagent JSONL files.
  */
-function extractAgentsAndSearches(entries: ParsedEntry[]): {
+async function extractAgentsAndSearches(
+  entries: ParsedEntry[],
+  subagentFiles: SubagentFile[]
+): Promise<{
   exploreAgents: ExploreAgentRef[];
   webSearches: WebSearchRef[];
-} {
+}> {
   const exploreAgents: ExploreAgentRef[] = [];
   const webSearches: WebSearchRef[] = [];
   const seenAgentIds = new Set<string>();
   const seenQueries = new Set<string>();
+
+  // Build a map of agentId -> subagent file for quick lookup
+  const subagentFileMap = new Map<string, SubagentFile>();
+  for (const f of subagentFiles) {
+    subagentFileMap.set(f.agentId, f);
+  }
 
   for (const entry of entries) {
     // Extract explore agents from agent_progress entries
@@ -465,6 +479,25 @@ function extractAgentsAndSearches(entries: ParsedEntry[]): {
           resultCount: entry.content.searchResultCount || 0,
           timestamp: entry.timestamp,
         });
+      }
+    }
+  }
+
+  // Compute token costs for explore agents from their subagent JSONL files
+  for (const agent of exploreAgents) {
+    const subagentFile = subagentFileMap.get(agent.id);
+    if (subagentFile) {
+      try {
+        const subEntries = await parseJSONL(subagentFile.filePath);
+        if (subEntries.length > 0) {
+          const subStats = getEntryStatistics(subEntries);
+          // Total cost = last turn's context window size + estimated output
+          const inputCost = subStats.lastInputTokens + subStats.lastCacheRead;
+          const outputCost = subStats.totalOutputTokensEstimated;
+          agent.tokenCost = inputCost + outputCost;
+        }
+      } catch {
+        // Subagent file couldn't be parsed, leave tokenCost undefined
       }
     }
   }
@@ -523,8 +556,8 @@ export async function extractSessionMetadata(
     // Detect mode and plans
     const { mode, planRefs } = detectModeAndPlans(entries);
 
-    // Extract explore agents and web searches
-    const { exploreAgents, webSearches } = extractAgentsAndSearches(entries);
+    // Extract explore agents and web searches (with token costs from subagent files)
+    const { exploreAgents, webSearches } = await extractAgentsAndSearches(entries, subagentFiles);
 
     // Use LAST turn's input tokens for context window size
     // Each turn reports the FULL context, so summing would overcount

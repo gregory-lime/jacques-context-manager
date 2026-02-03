@@ -7,3 +7,6 @@ export { EmptyState } from './EmptyState';
 export { Toast } from './Toast';
 export type { ToastData, ToastPriority } from './Toast';
 export { ToastContainer, toastStore } from './ToastContainer';
+export { NotificationCenter } from './NotificationCenter';
+export { notificationStore } from './NotificationStore';
+export type { NotificationItem, NotificationCategory, NotificationPriority } from './NotificationStore';
