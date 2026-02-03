@@ -219,16 +219,17 @@ export function addToIndex(
     }
   }
 
-  // Update project info
-  if (!index.projects[manifest.projectSlug]) {
-    index.projects[manifest.projectSlug] = {
+  // Update project info (keyed by projectId for uniqueness)
+  const projectKey = manifest.projectId || manifest.projectSlug;
+  if (!index.projects[projectKey]) {
+    index.projects[projectKey] = {
       path: manifest.projectPath,
       conversationCount: 0,
       lastActivity: manifest.endedAt,
     };
   }
 
-  const projectInfo = index.projects[manifest.projectSlug];
+  const projectInfo = index.projects[projectKey];
   projectInfo.conversationCount++;
 
   // Update last activity if newer
@@ -264,7 +265,7 @@ export function removeFromIndex(
     }
   }
 
-  // Update project info
+  // Update project info (try projectId key first)
   if (index.projects[projectSlug]) {
     index.projects[projectSlug].conversationCount--;
 

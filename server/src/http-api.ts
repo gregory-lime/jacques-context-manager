@@ -979,12 +979,13 @@ export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpA
         }
 
         // Read the conversation content from the archive
+        // Use projectId (encoded path) for storage, fallback to projectSlug for old data
         const archivePath = join(
           homedir(),
           '.jacques',
           'archive',
           'conversations',
-          manifest.projectSlug
+          manifest.projectId || manifest.projectSlug
         );
 
         // Find the conversation file (it uses readable filename format)

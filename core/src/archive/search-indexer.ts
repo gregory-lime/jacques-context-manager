@@ -288,14 +288,13 @@ export function removeFromIndex(
     }
   }
 
-  // Update project info (try projectId, fallback to projectSlug for old data)
-  const projectKey = index.projects[projectId] ? projectId : projectId;
-  if (index.projects[projectKey]) {
-    index.projects[projectKey].conversationCount--;
+  // Update project info
+  if (index.projects[projectId]) {
+    index.projects[projectId].conversationCount--;
 
     // Remove project if no more conversations
-    if (index.projects[projectKey].conversationCount <= 0) {
-      delete index.projects[projectKey];
+    if (index.projects[projectId].conversationCount <= 0) {
+      delete index.projects[projectId];
     }
   }
 

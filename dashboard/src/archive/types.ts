@@ -24,7 +24,9 @@ export interface PlanReference {
 export interface ConversationManifest {
   /** Session UUID */
   id: string;
-  /** Project slug (e.g., "jacques-context-manager") */
+  /** Unique project identifier using encoded full path (e.g., "-Users-gole-Desktop-jacques-context-manager") */
+  projectId: string;
+  /** Project slug for display (e.g., "jacques-context-manager") */
   projectSlug: string;
   /** Full project path (e.g., "/Users/gole/Desktop/jacques-context-manager") */
   projectPath: string;
@@ -97,9 +99,9 @@ export interface SearchIndex {
     [keyword: string]: IndexReference[];
   };
 
-  /** Quick access to project list */
+  /** Quick access to project list (keyed by projectId for uniqueness) */
   projects: {
-    [slug: string]: ProjectInfo;
+    [projectId: string]: ProjectInfo;
   };
 
   metadata: {

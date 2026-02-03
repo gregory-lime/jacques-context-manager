@@ -15,6 +15,7 @@ import { homedir } from "os";
 
 interface ConversationManifest {
   id: string;
+  projectId: string;
   projectSlug: string;
   projectPath: string;
   archivedAt: string;
@@ -45,7 +46,7 @@ interface SearchIndex {
   lastUpdated: string;
   keywords: { [keyword: string]: IndexReference[] };
   projects: {
-    [slug: string]: {
+    [projectId: string]: {
       path: string;
       conversationCount: number;
       lastActivity: string;
@@ -209,8 +210,8 @@ export async function searchConversations(
     const manifest = await readManifest(id);
     if (!manifest) continue;
 
-    // Apply filters
-    if (input.project && manifest.projectSlug !== input.project) {
+    // Apply filters (support both projectId and projectSlug for backward compat)
+    if (input.project && manifest.projectId !== input.project && manifest.projectSlug !== input.project) {
       continue;
     }
 

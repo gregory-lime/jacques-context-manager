@@ -141,22 +141,24 @@ export function getManifestPath(id: string): string {
 
 /**
  * Get the path to a conversation in the global archive.
+ * Uses projectId (encoded full path) for storage to avoid collisions.
  */
-export function getConversationPath(projectSlug: string, id: string): string {
+export function getConversationPath(projectId: string, id: string): string {
   return path.join(
     GLOBAL_ARCHIVE_PATH,
     "conversations",
-    projectSlug,
+    projectId,
     `${id}.json`
   );
 }
 
 /**
  * Get the path to a plan in the global archive.
- * Plans are organized by project: plans/[project]/[name].md
+ * Plans are organized by project: plans/[projectId]/[name].md
+ * Uses projectId (encoded full path) for storage to avoid collisions.
  */
-export function getPlanPath(projectSlug: string, planName: string): string {
-  return path.join(GLOBAL_ARCHIVE_PATH, "plans", projectSlug, planName);
+export function getPlanPath(projectId: string, planName: string): string {
+  return path.join(GLOBAL_ARCHIVE_PATH, "plans", projectId, planName);
 }
 
 /**
@@ -312,12 +314,13 @@ export async function saveConversation(
   // Generate readable filename
   const filename = generateSessionFilename(manifest);
 
-  // Save to global archive (conversations/[project]/[filename])
+  // Save to global archive (conversations/[projectId]/[filename])
+  // Use projectId (encoded path) for unique directory naming
   await ensureGlobalArchive();
   const globalDir = path.join(
     GLOBAL_ARCHIVE_PATH,
     "conversations",
-    manifest.projectSlug
+    manifest.projectId
   );
   await fs.mkdir(globalDir, { recursive: true });
   const globalPath = path.join(globalDir, filename);
@@ -358,13 +361,14 @@ export async function saveConversation(
 
 /**
  * Read a conversation from the global archive.
+ * @param projectId The projectId (encoded path) or projectSlug for old data
  */
 export async function readConversation(
-  projectSlug: string,
+  projectId: string,
   id: string
 ): Promise<SavedContext | null> {
   try {
-    const convPath = getConversationPath(projectSlug, id);
+    const convPath = getConversationPath(projectId, id);
     const content = await fs.readFile(convPath, "utf-8");
     return JSON.parse(content) as SavedContext;
   } catch {
@@ -386,6 +390,7 @@ export async function archivePlan(
   options: {
     saveToLocal?: boolean;
     projectPath?: string;
+    projectId?: string;
     projectSlug?: string;
     sessionId?: string;
   } = {}
@@ -399,10 +404,13 @@ export async function archivePlan(
       content,
       createdAt: stats.mtime,
     });
-    const projectSlug = options.projectSlug || path.basename(options.projectPath || "unknown");
+    // Use projectId for storage, derive from path if not provided
+    const projectId =
+      options.projectId ||
+      (options.projectPath ? options.projectPath.replace(/\//g, "-") : "unknown");
 
-    // Save to global archive (plans/[project]/[filename])
-    const globalPlanPath = getPlanPath(projectSlug, filename);
+    // Save to global archive (plans/[projectId]/[filename])
+    const globalPlanPath = getPlanPath(projectId, filename);
     await ensureGlobalArchive();
     await fs.mkdir(path.dirname(globalPlanPath), { recursive: true });
     await fs.writeFile(globalPlanPath, content);
@@ -571,7 +579,7 @@ export async function archiveConversation(
         const archivedPath = await archivePlan(planRef.path, {
           saveToLocal: options.saveToLocal,
           projectPath: manifest.projectPath,
-          projectSlug: manifest.projectSlug,
+          projectId: manifest.projectId,
           sessionId: manifest.id,
         });
         if (archivedPath) {
@@ -622,8 +630,8 @@ export async function searchConversations(
     const manifest = await readManifest(id);
     if (!manifest) continue;
 
-    // Apply filters
-    if (input.project && manifest.projectSlug !== input.project) {
+    // Apply filters (support both projectId and projectSlug for backward compat)
+    if (input.project && manifest.projectId !== input.project && manifest.projectSlug !== input.project) {
       continue;
     }
 

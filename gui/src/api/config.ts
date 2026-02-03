@@ -125,6 +125,7 @@ export interface ArchiveStats {
 
 export interface ConversationManifest {
   id: string;
+  projectId: string;
   projectSlug: string;
   projectPath: string;
   archivedAt: string;

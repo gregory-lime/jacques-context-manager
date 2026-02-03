@@ -99,6 +99,7 @@ describe("extractPathKeywords", () => {
 describe("extractKeywordsWithFields", () => {
   const mockManifest: ConversationManifest = {
     id: "test-123",
+    projectId: "-Users-test-my-project",
     projectSlug: "my-project",
     projectPath: "/Users/test/my-project",
     archivedAt: "2026-01-15T10:00:00.000Z",
@@ -163,6 +164,7 @@ describe("addToIndex", () => {
   it("adds manifest keywords to inverted index", () => {
     const manifest: ConversationManifest = {
       id: "test-123",
+      projectId: "-Users-test-my-project",
       projectSlug: "my-project",
       projectPath: "/Users/test/my-project",
       archivedAt: "2026-01-15T10:00:00.000Z",
@@ -191,6 +193,7 @@ describe("addToIndex", () => {
   it("updates project info", () => {
     const manifest: ConversationManifest = {
       id: "test-123",
+      projectId: "-Users-test-my-project",
       projectSlug: "my-project",
       projectPath: "/Users/test/my-project",
       archivedAt: "2026-01-15T10:00:00.000Z",
@@ -211,9 +214,9 @@ describe("addToIndex", () => {
     const index = getDefaultSearchIndex();
     addToIndex(index, manifest);
 
-    expect(index.projects["my-project"]).toBeDefined();
-    expect(index.projects["my-project"].conversationCount).toBe(1);
-    expect(index.projects["my-project"].path).toBe("/Users/test/my-project");
+    expect(index.projects["-Users-test-my-project"]).toBeDefined();
+    expect(index.projects["-Users-test-my-project"].conversationCount).toBe(1);
+    expect(index.projects["-Users-test-my-project"].path).toBe("/Users/test/my-project");
   });
 
   it("increments conversation count for existing project", () => {
@@ -221,6 +224,7 @@ describe("addToIndex", () => {
 
     const manifest1: ConversationManifest = {
       id: "test-1",
+      projectId: "-Users-test-my-project",
       projectSlug: "my-project",
       projectPath: "/Users/test/my-project",
       archivedAt: "2026-01-15T10:00:00.000Z",
@@ -247,13 +251,14 @@ describe("addToIndex", () => {
     addToIndex(index, manifest1);
     addToIndex(index, manifest2);
 
-    expect(index.projects["my-project"].conversationCount).toBe(2);
+    expect(index.projects["-Users-test-my-project"].conversationCount).toBe(2);
     expect(index.metadata.totalConversations).toBe(2);
   });
 
   it("updates metadata totals", () => {
     const manifest: ConversationManifest = {
       id: "test-123",
+      projectId: "-Users-test-my-project",
       projectSlug: "my-project",
       projectPath: "/Users/test/my-project",
       archivedAt: "2026-01-15T10:00:00.000Z",
@@ -284,6 +289,7 @@ describe("removeFromIndex", () => {
     const index = getDefaultSearchIndex();
     const manifest: ConversationManifest = {
       id: "test-123",
+      projectId: "-Users-test-my-project",
       projectSlug: "my-project",
       projectPath: "/Users/test/my-project",
       archivedAt: "2026-01-15T10:00:00.000Z",
@@ -304,7 +310,7 @@ describe("removeFromIndex", () => {
     addToIndex(index, manifest);
     expect(index.keywords["unique"]).toBeDefined();
 
-    removeFromIndex(index, "test-123", "my-project");
+    removeFromIndex(index, "test-123", "-Users-test-my-project");
     // Keyword entry should be removed if no other manifests use it
     expect(index.keywords["unique"]).toBeUndefined();
   });
@@ -314,6 +320,7 @@ describe("removeFromIndex", () => {
 
     const manifest1: ConversationManifest = {
       id: "test-1",
+      projectId: "-Users-test-my-project",
       projectSlug: "my-project",
       projectPath: "/Users/test/my-project",
       archivedAt: "2026-01-15T10:00:00.000Z",
@@ -339,16 +346,17 @@ describe("removeFromIndex", () => {
 
     addToIndex(index, manifest1);
     addToIndex(index, manifest2);
-    expect(index.projects["my-project"].conversationCount).toBe(2);
+    expect(index.projects["-Users-test-my-project"].conversationCount).toBe(2);
 
-    removeFromIndex(index, "test-1", "my-project");
-    expect(index.projects["my-project"].conversationCount).toBe(1);
+    removeFromIndex(index, "test-1", "-Users-test-my-project");
+    expect(index.projects["-Users-test-my-project"].conversationCount).toBe(1);
   });
 
   it("removes project when conversation count reaches zero", () => {
     const index = getDefaultSearchIndex();
     const manifest: ConversationManifest = {
       id: "test-123",
+      projectId: "-Users-test-my-project",
       projectSlug: "my-project",
       projectPath: "/Users/test/my-project",
       archivedAt: "2026-01-15T10:00:00.000Z",
@@ -367,10 +375,10 @@ describe("removeFromIndex", () => {
     };
 
     addToIndex(index, manifest);
-    expect(index.projects["my-project"]).toBeDefined();
+    expect(index.projects["-Users-test-my-project"]).toBeDefined();
 
-    removeFromIndex(index, "test-123", "my-project");
-    expect(index.projects["my-project"]).toBeUndefined();
+    removeFromIndex(index, "test-123", "-Users-test-my-project");
+    expect(index.projects["-Users-test-my-project"]).toBeUndefined();
   });
 });
 
@@ -380,6 +388,7 @@ describe("searchIndex", () => {
 
     const manifest1: ConversationManifest = {
       id: "auth-session",
+      projectId: "-Users-test-my-project",
       projectSlug: "my-project",
       projectPath: "/Users/test/my-project",
       archivedAt: "2026-01-15T10:00:00.000Z",
@@ -399,6 +408,7 @@ describe("searchIndex", () => {
 
     const manifest2: ConversationManifest = {
       id: "database-session",
+      projectId: "-Users-test-my-project",
       projectSlug: "my-project",
       projectPath: "/Users/test/my-project",
       archivedAt: "2026-01-15T11:00:00.000Z",
@@ -429,6 +439,7 @@ describe("searchIndex", () => {
 
     const manifest: ConversationManifest = {
       id: "full-match",
+      projectId: "-Users-test-my-project",
       projectSlug: "my-project",
       projectPath: "/Users/test/my-project",
       archivedAt: "2026-01-15T10:00:00.000Z",
@@ -472,6 +483,7 @@ describe("searchIndex", () => {
 
     const manifest: ConversationManifest = {
       id: "test-session",
+      projectId: "-Users-test-my-project",
       projectSlug: "my-project",
       projectPath: "/Users/test/my-project",
       archivedAt: "2026-01-15T10:00:00.000Z",
@@ -503,6 +515,7 @@ describe("getIndexStats", () => {
 
     const manifest1: ConversationManifest = {
       id: "test-1",
+      projectId: "-Users-test-project-a",
       projectSlug: "project-a",
       projectPath: "/Users/test/project-a",
       archivedAt: "2026-01-15T10:00:00.000Z",
@@ -522,6 +535,7 @@ describe("getIndexStats", () => {
 
     const manifest2: ConversationManifest = {
       id: "test-2",
+      projectId: "-Users-test-project-b",
       projectSlug: "project-b",
       projectPath: "/Users/test/project-b",
       archivedAt: "2026-01-15T11:00:00.000Z",

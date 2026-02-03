@@ -23,6 +23,9 @@ Thumbs.db
 .jacques/plans/
 .jacques/index.json
 
+# Playwright MCP screenshots
+.playwright-mcp/
+
 # Claude Code local settings
 .claude/settings.local.json
 

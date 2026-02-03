@@ -152,7 +152,9 @@ export function extractManifestFromEntries(
   const sessionId =
     entries[0]?.sessionId || path.basename(jsonlPath, ".jsonl");
 
-  // Get project slug from path
+  // Generate unique projectId from full path (dash-encoding pattern)
+  const projectId = projectPath.replace(/\//g, "-");
+  // Keep projectSlug for human-readable display
   const projectSlug = path.basename(projectPath);
 
   // Find timestamps
@@ -199,6 +201,7 @@ export function extractManifestFromEntries(
 
   return {
     id: sessionId,
+    projectId,
     projectSlug,
     projectPath,
     archivedAt: new Date().toISOString(),

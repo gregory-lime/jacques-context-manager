@@ -81,6 +81,7 @@ describe("extractManifestFromEntries", () => {
     );
 
     expect(manifest.id).toBe("session-123");
+    expect(manifest.projectId).toBe("-Users-test-project");
     expect(manifest.projectSlug).toBe("project");
     expect(manifest.projectPath).toBe("/Users/test/project");
   });
