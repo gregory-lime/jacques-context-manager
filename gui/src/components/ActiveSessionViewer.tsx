@@ -9,12 +9,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getSession, type SessionData, type ParsedEntry } from '../api';
 import { ConversationViewer } from './Conversation';
+import { useOpenSessions } from '../hooks/useOpenSessions';
 import type { SavedConversation, ConversationMessage, MessageContent } from '../types';
 import { colors } from '../styles/theme';
 
 interface ActiveSessionViewerProps {
   sessionId: string;
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 /**
@@ -251,6 +252,8 @@ function transformToSavedConversation(data: SessionData): SavedConversation {
 }
 
 export function ActiveSessionViewer({ sessionId, onBack }: ActiveSessionViewerProps) {
+  const { viewDashboard } = useOpenSessions();
+  const handleBack = onBack || viewDashboard;
   const [conversation, setConversation] = useState<SavedConversation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -293,7 +296,7 @@ export function ActiveSessionViewer({ sessionId, onBack }: ActiveSessionViewerPr
   if (error) {
     return (
       <div style={styles.errorContainer}>
-        <button style={styles.backButton} onClick={onBack} type="button">
+        <button style={styles.backButton} onClick={handleBack} type="button">
           ← Back
         </button>
         <div style={styles.errorContent}>
@@ -310,7 +313,7 @@ export function ActiveSessionViewer({ sessionId, onBack }: ActiveSessionViewerPr
   if (awaitingFirstResponse) {
     return (
       <div style={styles.awaitingContainer}>
-        <button style={styles.backButton} onClick={onBack} type="button">
+        <button style={styles.backButton} onClick={handleBack} type="button">
           ← Back
         </button>
         <div style={styles.awaitingContent}>
@@ -329,7 +332,7 @@ export function ActiveSessionViewer({ sessionId, onBack }: ActiveSessionViewerPr
     return null;
   }
 
-  return <ConversationViewer conversation={conversation} onBack={onBack} />;
+  return <ConversationViewer conversation={conversation} onBack={handleBack} />;
 }
 
 const styles: Record<string, React.CSSProperties> = {

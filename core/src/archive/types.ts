@@ -15,8 +15,8 @@ export interface PlanReference {
   name: string;
   /** Path in archive (e.g., plans/foo.md) */
   archivedPath: string;
-  /** Detection method: embedded (from user message) or write (from Write tool) */
-  source: "embedded" | "write";
+  /** Detection method: embedded (from user message), write (from Write tool), or agent (from Plan subagent) */
+  source: "embedded" | "write" | "agent";
 }
 
 /**

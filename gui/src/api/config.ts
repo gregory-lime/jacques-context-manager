@@ -430,66 +430,6 @@ export async function listSessionSubagents(sessionId: string): Promise<{
 }
 
 // ============================================================
-// Notification API
-// ============================================================
-
-export interface ServerNotificationSettings {
-  enabled: boolean;
-  categories: Record<string, boolean>;
-  largeOperationThreshold: number;
-  contextThresholds: number[];
-}
-
-export interface ServerNotificationItem {
-  id: string;
-  category: string;
-  title: string;
-  body: string;
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  timestamp: number;
-  sessionId?: string;
-}
-
-/**
- * Get server-side notification settings
- */
-export async function getNotificationSettings(): Promise<ServerNotificationSettings> {
-  const response = await fetch(`${API_URL}/notifications/settings`);
-  if (!response.ok) {
-    throw new Error(`Failed to get notification settings: ${response.statusText}`);
-  }
-  return response.json();
-}
-
-/**
- * Update server-side notification settings
- */
-export async function updateNotificationSettings(
-  patch: Partial<ServerNotificationSettings>
-): Promise<ServerNotificationSettings> {
-  const response = await fetch(`${API_URL}/notifications/settings`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(patch),
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to update notification settings: ${response.statusText}`);
-  }
-  return response.json();
-}
-
-/**
- * Get notification history from server
- */
-export async function getNotificationHistory(): Promise<{ notifications: ServerNotificationItem[] }> {
-  const response = await fetch(`${API_URL}/notifications`);
-  if (!response.ok) {
-    throw new Error(`Failed to get notification history: ${response.statusText}`);
-  }
-  return response.json();
-}
-
-// ============================================================
 // Sessions API (Hybrid Architecture - reads JSONL directly)
 // ============================================================
 
@@ -547,12 +487,16 @@ export interface SessionEntry {
   planRefs?: Array<{
     /** Plan title extracted from content */
     title: string;
-    /** Source: 'embedded' for inline plans, 'write' for Write tool plans */
-    source: 'embedded' | 'write';
+    /** Source: 'embedded' for inline plans, 'write' for Write tool plans, 'agent' for Plan subagent */
+    source: 'embedded' | 'write' | 'agent';
     /** Index of the message containing this plan */
     messageIndex: number;
     /** File path if plan was written to disk */
     filePath?: string;
+    /** Agent ID for Plan subagent source */
+    agentId?: string;
+    /** Links to PlanEntry.id in catalog (.jacques/index.json) */
+    catalogId?: string;
   }>;
   /** Explore agent references */
   exploreAgents?: Array<{
@@ -562,6 +506,8 @@ export interface SessionEntry {
     description: string;
     /** Timestamp when agent was called */
     timestamp: string;
+    /** Estimated total token cost (input + output) from subagent JSONL */
+    tokenCost?: number;
   }>;
   /** Web search references */
   webSearches?: Array<{
@@ -779,6 +725,64 @@ export async function getSubagentFromSession(
 }
 
 /**
+ * Plan content response from session plan endpoint
+ */
+export interface SessionPlanContent {
+  title: string;
+  source: 'embedded' | 'write' | 'agent';
+  messageIndex: number;
+  content: string;
+  filePath?: string;
+  agentId?: string;
+}
+
+/**
+ * Get plan content from a specific message in a session
+ */
+export async function getSessionPlanContent(
+  sessionId: string,
+  messageIndex: number,
+): Promise<SessionPlanContent> {
+  const response = await fetch(`${API_URL}/sessions/${sessionId}/plans/${messageIndex}`);
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error('Plan not found');
+    }
+    throw new Error(`Failed to get plan: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Web search with URLs from JSONL parsing
+ */
+export interface SessionWebSearch {
+  query: string;
+  resultCount: number;
+  urls: Array<{ title: string; url: string }>;
+  /** Assistant's synthesized response based on search findings */
+  response: string;
+  timestamp: string;
+}
+
+/**
+ * Get web search entries with URLs for a session.
+ * Parses the JSONL to extract full URL data (not available in cached index).
+ */
+export async function getSessionWebSearches(
+  sessionId: string,
+): Promise<{ searches: SessionWebSearch[] }> {
+  const response = await fetch(`${API_URL}/sessions/${sessionId}/web-searches`);
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error('Session not found');
+    }
+    throw new Error(`Failed to get web searches: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
  * Session badges for display in Dashboard session cards
  */
 export interface SessionBadges {
@@ -807,6 +811,70 @@ export async function getSessionBadges(sessionId: string): Promise<SessionBadges
       throw new Error('Session not found');
     }
     throw new Error(`Failed to get session badges: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+// ============================================================
+// Plan Catalog API
+// ============================================================
+
+/**
+ * Plan catalog entry from .jacques/index.json
+ */
+export interface PlanCatalogEntry {
+  id: string;
+  title: string;
+  filename: string;
+  path: string;
+  contentHash?: string;
+  createdAt: string;
+  updatedAt: string;
+  sessions: string[];
+}
+
+/**
+ * Plan content response from catalog
+ */
+export interface PlanCatalogContent {
+  id: string;
+  title: string;
+  filename: string;
+  contentHash?: string;
+  sessions: string[];
+  createdAt: string;
+  updatedAt: string;
+  content: string;
+}
+
+/**
+ * Get plan catalog for a project (deduplicated plans from .jacques/index.json)
+ */
+export async function getProjectPlanCatalog(encodedPath: string): Promise<{
+  plans: PlanCatalogEntry[];
+}> {
+  const response = await fetch(`${API_URL}/projects/${encodeURIComponent(encodedPath)}/plans`);
+  if (!response.ok) {
+    throw new Error(`Failed to get project plans: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Get a plan's content from the catalog
+ */
+export async function getPlanCatalogContent(
+  encodedPath: string,
+  planId: string
+): Promise<PlanCatalogContent> {
+  const response = await fetch(
+    `${API_URL}/projects/${encodeURIComponent(encodedPath)}/plans/${encodeURIComponent(planId)}/content`
+  );
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error('Plan not found');
+    }
+    throw new Error(`Failed to get plan content: ${response.statusText}`);
   }
   return response.json();
 }

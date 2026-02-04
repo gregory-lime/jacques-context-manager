@@ -60,6 +60,7 @@ export interface PlanEntry {
   title: string;
   filename: string;
   path: string;
+  contentHash?: string;      // SHA-256 of normalized content, used for dedup
   createdAt: string;
   updatedAt: string;
   sessions: string[]; // Session IDs that used this plan

@@ -30,6 +30,13 @@ if [ ! -f "dist/server.js" ]; then
     npm run build
 fi
 
+# Check if GUI is built
+if [ ! -f "$PROJECT_DIR/gui/dist/index.html" ]; then
+    echo "GUI not built. Building..."
+    cd "$PROJECT_DIR" && npm run build:gui
+    cd "$PROJECT_DIR/server"
+fi
+
 echo ""
 echo "Starting Jacques server..."
 echo "Press Ctrl+C to stop"

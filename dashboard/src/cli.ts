@@ -15,6 +15,10 @@
 import React from 'react';
 import { render } from 'ink';
 import { Command } from 'commander';
+import { execSync } from 'child_process';
+import { existsSync, statSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { App } from './components/App.js';
 import { JacquesClient } from '@jacques/core';
 import type { Session } from '@jacques/core';
@@ -60,6 +64,36 @@ async function showStartupAnimation(): Promise<void> {
  * Start the interactive dashboard using Ink
  */
 async function startDashboard(): Promise<void> {
+  // Auto-rebuild GUI if source is newer than dist
+  const __cli_filename = fileURLToPath(import.meta.url);
+  const __cli_dirname = dirname(__cli_filename);
+  const projectRoot = join(__cli_dirname, '..', '..');
+  const guiDistIndex = join(projectRoot, 'gui', 'dist', 'index.html');
+  const guiSentinelFiles = [
+    join(projectRoot, 'gui', 'src', 'App.tsx'),
+    join(projectRoot, 'gui', 'src', 'pages', 'Dashboard.tsx'),
+    join(projectRoot, 'gui', 'src', 'components', 'ui', 'index.ts'),
+  ];
+
+  // Check if any sentinel source file is newer than the built output
+  const distMtime = existsSync(guiDistIndex) ? statSync(guiDistIndex).mtimeMs : 0;
+  const needsRebuild = guiSentinelFiles.some(f => {
+    try {
+      return existsSync(f) && statSync(f).mtimeMs > distMtime;
+    } catch {
+      return false;
+    }
+  });
+
+  if (needsRebuild) {
+    process.stdout.write(distMtime === 0 ? 'Building GUI...\n' : 'Rebuilding GUI (source changed)...\n');
+    try {
+      execSync('npm run build:gui', { cwd: projectRoot, stdio: 'pipe' });
+    } catch {
+      process.stdout.write('Warning: GUI build failed. Serving previous version.\n');
+    }
+  }
+
   // Check if we're in a TTY (interactive terminal)
   const isTTY = process.stdin.isTTY && process.stdout.isTTY;
 

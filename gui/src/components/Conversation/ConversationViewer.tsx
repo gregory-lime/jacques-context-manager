@@ -3,6 +3,7 @@ import { Bot, Terminal, Plug, Search, Wrench, Brain, ArrowLeft, Filter, Chevrons
 import type { SavedConversation, ConversationMessage, MessageContent } from '../../types';
 import { colors } from '../../styles/theme';
 import { Badge } from '../ui';
+import { useOpenSessions } from '../../hooks/useOpenSessions';
 import { UserMessage } from './UserMessage';
 import { AssistantMessageGroup } from './AssistantMessageGroup';
 import { QuestionNavigator } from './QuestionNavigator';
@@ -187,6 +188,8 @@ function extractSmartTitle(title: string): string | null {
 }
 
 export function ConversationViewer({ conversation, onBack }: ConversationViewerProps) {
+  const { viewDashboard } = useOpenSessions();
+  const handleBack = onBack || viewDashboard;
   const [contentFilters, setContentFilters] = useState<ContentTypeFilters>(defaultContentFilters);
   const [showContentFilters, setShowContentFilters] = useState(false);
   const [allExpanded, setAllExpanded] = useState(false);
@@ -362,12 +365,10 @@ export function ConversationViewer({ conversation, onBack }: ConversationViewerP
         <div style={styles.headerTop}>
           {/* Mac dots + title */}
           <div style={styles.headerChrome}>
-            {onBack && (
-              <button style={styles.backButton} onClick={onBack} type="button">
-                <ArrowLeft size={14} />
-                <span>back</span>
-              </button>
-            )}
+            <button style={styles.backButton} onClick={handleBack} type="button">
+              <ArrowLeft size={14} />
+              <span>back</span>
+            </button>
             <div style={styles.chromeDots}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: colors.dotRed, opacity: 0.7 }} />
               <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: colors.dotYellow, opacity: 0.7 }} />

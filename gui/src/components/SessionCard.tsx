@@ -1,8 +1,9 @@
 import type { Session, SessionBadges } from '../types';
 import { colors } from '../styles/theme';
 import { ContextMeter } from './ContextMeter';
+import { WindowBar } from './ui/WindowBar';
 import { PlanIcon, AgentIcon } from './Icons';
-import { Plug, Globe, Zap, GitBranch, Play, Search } from 'lucide-react';
+import { Plug, Globe, Zap, GitBranch, Play } from 'lucide-react';
 
 interface SessionCardProps {
   session: Session;
@@ -11,7 +12,6 @@ interface SessionCardProps {
   onClick?: () => void;
   onPlanClick?: () => void;
   onAgentClick?: () => void;
-  onFocusTerminal?: () => void;
 }
 
 const PLAN_TITLE_PATTERNS = [
@@ -59,7 +59,6 @@ export function SessionCard({
   onClick,
   onPlanClick,
   onAgentClick,
-  onFocusTerminal,
 }: SessionCardProps) {
   const status = session.status;
   const statusCfg = STATUS_CONFIG[status] || STATUS_CONFIG.idle;
@@ -90,133 +89,114 @@ export function SessionCard({
     onAgentClick?.();
   };
 
-  const handleFocusTerminal = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onFocusTerminal?.();
-  };
-
-  const focusedStyles: React.CSSProperties = isFocused ? {
-    borderColor: colors.accent,
-    borderLeftWidth: '3px',
-    paddingLeft: '18px',
-    boxShadow: '0 0 16px rgba(230, 126, 82, 0.15)',
-  } : {};
-
   return (
     <div
       className="jacques-session-card"
       style={{
         ...styles.card,
-        ...focusedStyles,
+        borderLeftColor: isFocused ? colors.accent : 'transparent',
+        boxShadow: isFocused ? '0 0 16px rgba(230, 126, 82, 0.15)' : 'none',
         cursor: onClick ? 'pointer' : 'default',
       }}
       onClick={handleCardClick}
     >
-      {/* ── Header Row ── */}
-      <div style={styles.header}>
-        <div style={styles.headerLeft}>
-          <span
-            style={{
-              ...styles.statusDot,
-              backgroundColor: statusCfg.dotColor,
-              animation: statusCfg.pulse ? 'status-pulse 1.8s ease-in-out infinite' : 'none',
-            }}
-          />
-          <span style={{ ...styles.statusText, color: statusCfg.textColor }}>
-            {status}
-          </span>
-          {badges?.mode && (
+      {/* WindowBar chrome */}
+      <WindowBar
+        title={
+          <>
             <span
               style={{
-                ...styles.modePill,
-                color: badges.mode === 'planning' ? '#34D399' : '#60A5FA',
-                backgroundColor: badges.mode === 'planning'
-                  ? 'rgba(52, 211, 153, 0.12)'
-                  : 'rgba(96, 165, 250, 0.12)',
+                ...styles.statusDot,
+                backgroundColor: statusCfg.dotColor,
+                animation: statusCfg.pulse ? 'status-pulse 1.8s ease-in-out infinite' : 'none',
               }}
-            >
-              {badges.mode === 'planning'
-                ? <><GitBranch size={9} style={{ marginRight: 3 }} />planning</>
-                : <><Play size={9} style={{ marginRight: 3 }} />executing</>
-              }
+            />
+            <span style={{ ...styles.statusText, color: statusCfg.textColor }}>
+              {status}
             </span>
-          )}
-        </div>
-        <div style={styles.headerRight}>
-          <span style={styles.modelName}>{shortModel}</span>
-          <span style={styles.timeAgo}>{timeAgo(session.last_activity)}</span>
-        </div>
-      </div>
+            {badges?.mode && (
+              <span
+                style={{
+                  ...styles.modePill,
+                  color: badges.mode === 'planning' ? '#34D399' : '#60A5FA',
+                  backgroundColor: badges.mode === 'planning'
+                    ? 'rgba(52, 211, 153, 0.12)'
+                    : 'rgba(96, 165, 250, 0.12)',
+                }}
+              >
+                {badges.mode === 'planning'
+                  ? <><GitBranch size={9} style={{ marginRight: 3 }} />plan</>
+                  : <><Play size={9} style={{ marginRight: 3 }} />exec</>
+                }
+              </span>
+            )}
+          </>
+        }
+      >
+        <span style={styles.modelName}>{shortModel}</span>
+        <span style={styles.timeAgo}>{timeAgo(session.last_activity)}</span>
+      </WindowBar>
 
-      {/* ── Title ── */}
-      <div style={styles.titleRow}>
-        {isPlan && (
-          <PlanIcon size={14} color="#34D399" style={{ flexShrink: 0, marginRight: 6 }} />
-        )}
-        <span style={styles.title}>{displayTitle}</span>
-      </div>
-
-      {/* ── Context Meter ── */}
-      <div style={styles.meter}>
-        <ContextMeter metrics={session.context_metrics} />
-      </div>
-
-      {/* ── Footer Row ── */}
-      <div style={styles.footer}>
-        <div style={styles.footerLeft}>
-          <button
-            style={{
-              ...styles.focusButton,
-              ...(isFocused ? styles.focusButtonActive : {}),
-            }}
-            className="jacques-focus-btn"
-            onClick={handleFocusTerminal}
-            type="button"
-            title={isFocused ? 'Focused — click to bring terminal to front' : 'Click to focus this terminal'}
-          >
-            <Search size={12} />
-          </button>
-          {hasPlan && (
-            <button
-              style={styles.indicatorButton}
-              className="jacques-indicator"
-              onClick={handlePlanClick}
-              type="button"
-              title="View plans"
-            >
-              <PlanIcon size={13} color="#34D399" />
-              <span style={styles.indicatorCount}>{badges!.planCount}</span>
-            </button>
+      {/* Card body */}
+      <div style={styles.body}>
+        {/* Title */}
+        <div style={styles.titleRow}>
+          {isPlan && (
+            <PlanIcon size={14} color="#34D399" style={{ flexShrink: 0, marginRight: 6 }} />
           )}
-          {hasAgents && (
-            <button
-              style={styles.indicatorButton}
-              className="jacques-indicator"
-              onClick={handleAgentClick}
-              type="button"
-              title="View agents"
-            >
-              <AgentIcon size={13} color="#FF6600" />
-              <span style={styles.indicatorCount}>{badges!.agentCount}</span>
-            </button>
-          )}
+          <span style={styles.title}>{displayTitle}</span>
         </div>
 
-        <div style={styles.footerCenter}>
-          {badges && badges.mcpCount > 0 && (
-            <Plug size={10} color={colors.textMuted} style={{ opacity: 0.7 }} />
-          )}
-          {badges && badges.webSearchCount > 0 && (
-            <Globe size={10} color="#60A5FA" style={{ opacity: 0.7 }} />
-          )}
-          {badges?.hadAutoCompact && (
-            <Zap size={10} color={colors.textMuted} style={{ opacity: 0.7 }} />
-          )}
+        {/* Context Meter */}
+        <div style={styles.meter}>
+          <ContextMeter metrics={session.context_metrics} />
         </div>
 
-        <span className="jacques-session-card-hint" style={styles.hint}>
-          Click to view →
-        </span>
+        {/* Footer Row */}
+        <div style={styles.footer}>
+          <div style={styles.footerLeft}>
+            {hasPlan && (
+              <button
+                style={styles.indicatorButton}
+                className="jacques-indicator"
+                onClick={handlePlanClick}
+                type="button"
+                title="View plans"
+              >
+                <PlanIcon size={13} color="#34D399" />
+                <span style={styles.indicatorCount}>{badges!.planCount}</span>
+              </button>
+            )}
+            {hasAgents && (
+              <button
+                style={styles.indicatorButton}
+                className="jacques-indicator"
+                onClick={handleAgentClick}
+                type="button"
+                title="View agents"
+              >
+                <AgentIcon size={13} color="#FF6600" />
+                <span style={styles.indicatorCount}>{badges!.agentCount}</span>
+              </button>
+            )}
+          </div>
+
+          <div style={styles.footerCenter}>
+            {badges && badges.mcpCount > 0 && (
+              <Plug size={10} color={colors.textMuted} style={{ opacity: 0.7 }} />
+            )}
+            {badges && badges.webSearchCount > 0 && (
+              <Globe size={10} color="#60A5FA" style={{ opacity: 0.7 }} />
+            )}
+            {badges?.hadAutoCompact && (
+              <Zap size={10} color={colors.textMuted} style={{ opacity: 0.7 }} />
+            )}
+          </div>
+
+          <span className="jacques-session-card-hint" style={styles.hint}>
+            Click to view →
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -227,22 +207,17 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: colors.bgSecondary,
     borderRadius: '10px',
     border: `1px solid ${colors.borderSubtle}`,
-    padding: '20px',
+    borderLeft: '3px solid transparent',
     position: 'relative',
+    overflow: 'hidden',
   },
 
-  // Header
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '14px',
+  // Body (below chrome bar)
+  body: {
+    padding: '16px 20px 20px',
   },
-  headerLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-  },
+
+  // Status dot in chrome bar
   statusDot: {
     width: '6px',
     height: '6px',
@@ -265,11 +240,8 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.4,
     marginLeft: '2px',
   },
-  headerRight: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
+
+  // Chrome bar right
   modelName: {
     fontSize: '11px',
     color: colors.textMuted,
@@ -334,26 +306,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.textSecondary,
     fontWeight: 500,
     fontVariantNumeric: 'tabular-nums',
-  },
-  focusButton: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '24px',
-    height: '24px',
-    border: 'none',
-    background: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    color: colors.textMuted,
-    opacity: 0.4,
-    transition: 'all 150ms ease',
-    padding: 0,
-  },
-  focusButtonActive: {
-    color: colors.accent,
-    opacity: 1,
-    backgroundColor: 'rgba(230, 126, 82, 0.12)',
   },
   footerCenter: {
     display: 'flex',

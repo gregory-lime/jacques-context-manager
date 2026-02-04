@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, PenTool, Loader, X } from 'lucide-react';
+import { FileText, PenTool, Bot, Loader, X } from 'lucide-react';
 import { colors } from '../../styles/theme';
 import type { PlanInfo } from './PlanNavigator';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -16,7 +16,7 @@ const API_URL = import.meta.env.DEV ? 'http://localhost:4243/api' : '/api';
 
 interface PlanContent {
   title: string;
-  source: 'embedded' | 'write';
+  source: 'embedded' | 'write' | 'agent';
   messageIndex: number;
   filePath?: string;
   content: string;
@@ -33,21 +33,40 @@ export function PlanViewer({ plan, sessionId, onClose }: PlanViewerProps) {
       setError(null);
 
       try {
-        const response = await fetch(
-          `${API_URL}/sessions/${sessionId}/plans/${plan.messageIndex}`
-        );
+        if (plan.source === 'agent' && plan.agentId) {
+          // For agent plans, fetch from the subagent endpoint
+          const response = await fetch(
+            `${API_URL}/sessions/${sessionId}/subagents/${plan.agentId}`
+          );
 
-        if (!response.ok) {
-          if (response.status === 404) {
-            setError('Plan content not found');
-          } else {
-            setError(`Failed to load plan: ${response.statusText}`);
+          if (!response.ok) {
+            setError(response.status === 404 ? 'Agent content not found' : `Failed to load agent plan: ${response.statusText}`);
+            return;
           }
-          return;
-        }
 
-        const data: PlanContent = await response.json();
-        setContent(data.content);
+          const data = await response.json();
+          // Extract assistant text from the subagent entries
+          const assistantTexts: string[] = [];
+          for (const entry of data.entries || []) {
+            if (entry.type === 'assistant_message' && entry.content?.text) {
+              assistantTexts.push(entry.content.text);
+            }
+          }
+          setContent(assistantTexts.join('\n\n') || 'No plan content found in agent response.');
+        } else {
+          // For embedded/written plans, use the existing endpoint
+          const response = await fetch(
+            `${API_URL}/sessions/${sessionId}/plans/${plan.messageIndex}`
+          );
+
+          if (!response.ok) {
+            setError(response.status === 404 ? 'Plan content not found' : `Failed to load plan: ${response.statusText}`);
+            return;
+          }
+
+          const data: PlanContent = await response.json();
+          setContent(data.content);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load plan');
       } finally {
@@ -56,7 +75,7 @@ export function PlanViewer({ plan, sessionId, onClose }: PlanViewerProps) {
     };
 
     fetchPlanContent();
-  }, [sessionId, plan.messageIndex]);
+  }, [sessionId, plan.messageIndex, plan.source, plan.agentId]);
 
   // Handle keyboard escape
   useEffect(() => {
@@ -69,10 +88,18 @@ export function PlanViewer({ plan, sessionId, onClose }: PlanViewerProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  const sourceLabel = plan.source === 'embedded' ? 'Embedded Plan' : 'Written Plan';
-  const sourceIcon = plan.source === 'embedded'
-    ? <FileText size={24} />
-    : <PenTool size={24} />;
+  const sourceLabels: Record<string, string> = {
+    embedded: 'Embedded Plan',
+    write: 'Written Plan',
+    agent: 'Agent-Generated Plan',
+  };
+  const sourceIcons: Record<string, JSX.Element> = {
+    embedded: <FileText size={24} />,
+    write: <PenTool size={24} />,
+    agent: <Bot size={24} />,
+  };
+  const sourceLabel = sourceLabels[plan.source] || 'Plan';
+  const sourceIcon = sourceIcons[plan.source] || <FileText size={24} />;
 
   return (
     <div style={styles.overlay} onClick={onClose}>

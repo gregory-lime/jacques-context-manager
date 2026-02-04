@@ -47,6 +47,10 @@ export {
 
 export type { DetectedPlan, PlanFingerprint } from "./plan-extractor.js";
 
+// Plan Cataloger
+export { catalogPlan } from "./plan-cataloger.js";
+export type { CatalogPlanInput } from "./plan-cataloger.js";
+
 // Search Indexer
 export {
   tokenize,

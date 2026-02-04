@@ -1,12 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { colors } from '../styles/theme';
 import { TerminalPanel, SectionHeader } from '../components/ui';
 import { useNotifications } from '../hooks/useNotifications';
 import type { NotificationCategory } from '../notifications/types';
-import {
-  getNotificationSettings,
-  updateNotificationSettings,
-} from '../api';
 
 const CATEGORY_LABELS: Record<NotificationCategory, { label: string; description: string }> = {
   context: { label: 'Context thresholds', description: 'Alert at 50%, 70%, 90% usage' },
@@ -16,32 +12,25 @@ const CATEGORY_LABELS: Record<NotificationCategory, { label: string; description
   handoff: { label: 'Handoff ready', description: 'Handoff file generated for a session' },
 };
 
+const PERMISSION_LABELS: Record<string, { text: string; color: string }> = {
+  granted: { text: 'Granted', color: colors.success },
+  denied: { text: 'Denied (reset in browser settings)', color: colors.danger },
+  default: { text: 'Not yet asked', color: colors.textMuted },
+  unsupported: { text: 'Not supported in this browser', color: colors.textMuted },
+};
+
 export function Settings() {
   const {
     settings,
     updateSettings,
     toggleCategory,
+    browserPermission,
+    requestBrowserPermission,
   } = useNotifications();
 
   const [thresholdInput, setThresholdInput] = useState(
     String(settings.largeOperationThreshold),
   );
-
-  // Server-side desktop notification settings
-  const [desktopEnabled, setDesktopEnabled] = useState<boolean | null>(null);
-  const [desktopLoading, setDesktopLoading] = useState(false);
-
-  // Load server settings on mount
-  useEffect(() => {
-    getNotificationSettings()
-      .then((serverSettings) => {
-        setDesktopEnabled(serverSettings.enabled);
-      })
-      .catch(() => {
-        // Server may not be running, that's okay
-        setDesktopEnabled(null);
-      });
-  }, []);
 
   const handleThresholdBlur = () => {
     const parsed = parseInt(thresholdInput, 10);
@@ -52,18 +41,7 @@ export function Settings() {
     }
   };
 
-  const handleToggleDesktop = async () => {
-    if (desktopEnabled === null) return;
-    setDesktopLoading(true);
-    try {
-      const updated = await updateNotificationSettings({ enabled: !desktopEnabled });
-      setDesktopEnabled(updated.enabled);
-    } catch {
-      // revert on error
-    } finally {
-      setDesktopLoading(false);
-    }
-  };
+  const permInfo = PERMISSION_LABELS[browserPermission] ?? PERMISSION_LABELS.unsupported;
 
   return (
     <div style={styles.container}>
@@ -76,7 +54,7 @@ export function Settings() {
       <TerminalPanel title="notifications.json" showDots={true}>
         <h3 style={styles.sectionTitle}>Notifications</h3>
 
-        {/* Master toggle (in-app) */}
+        {/* Master toggle */}
         <div style={styles.setting}>
           <label style={styles.checkboxLabel}>
             <input
@@ -84,28 +62,28 @@ export function Settings() {
               checked={settings.enabled}
               onChange={() => updateSettings({ enabled: !settings.enabled })}
             />
-            <span>Enable in-app notifications</span>
+            <span>Enable notifications</span>
           </label>
         </div>
 
-        {/* Desktop notifications toggle (server-side) */}
+        {/* Browser permission */}
         <div style={styles.setting}>
-          <div style={styles.settingLabel}>Desktop Notifications</div>
+          <div style={styles.settingLabel}>Browser Notifications</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <label style={styles.checkboxLabel}>
-              <input
-                type="checkbox"
-                checked={desktopEnabled === true}
-                disabled={desktopEnabled === null || desktopLoading}
-                onChange={handleToggleDesktop}
-              />
-              <span>
-                {desktopEnabled === null ? 'Server not connected' : 'Enable desktop notifications'}
-              </span>
-            </label>
-          </div>
-          <div style={{ fontSize: '11px', color: colors.textMuted, marginTop: '4px' }}>
-            Desktop notifications appear even when the browser is closed
+            <button
+              style={{
+                ...styles.permissionBtn,
+                opacity: browserPermission === 'granted' || browserPermission === 'unsupported' ? 0.5 : 1,
+                cursor: browserPermission === 'granted' || browserPermission === 'unsupported' ? 'default' : 'pointer',
+              }}
+              onClick={requestBrowserPermission}
+              disabled={browserPermission === 'granted' || browserPermission === 'unsupported'}
+            >
+              Request Permission
+            </button>
+            <span style={{ fontSize: '12px', color: permInfo.color }}>
+              {permInfo.text}
+            </span>
           </div>
         </div>
 
@@ -252,6 +230,17 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: colors.bgElevated,
     borderRadius: '6px',
     color: colors.textMuted,
+  },
+  permissionBtn: {
+    padding: '6px 12px',
+    fontSize: '12px',
+    fontWeight: 500,
+    color: colors.textPrimary,
+    backgroundColor: colors.bgElevated,
+    border: `1px solid ${colors.borderSubtle}`,
+    borderRadius: '4px',
+    cursor: 'pointer',
+    transition: 'background-color 150ms ease',
   },
   numberInput: {
     width: '120px',

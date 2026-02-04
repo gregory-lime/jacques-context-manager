@@ -248,11 +248,6 @@ button {
   opacity: 0.9 !important;
 }
 
-.jacques-focus-btn:hover {
-  opacity: 0.9 !important;
-  background-color: rgba(230, 126, 82, 0.08);
-}
-
 /* Horizontal scroll for active sessions */
 .jacques-horizontal-scroll {
   display: flex;
@@ -306,7 +301,33 @@ button {
   box-shadow: inset 3px 0 0 var(--color-accent);
 }
 
-/* Asset card hover */
+/* Responsive card grid for active sessions */
+.jacques-card-grid {
+  display: grid;
+  gap: 16px;
+  width: 100%;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+@media (min-width: 1280px) {
+  .jacques-card-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 800px) {
+  .jacques-card-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .jacques-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Asset/list row hover */
 .jacques-asset-item {
   transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
 }
@@ -315,6 +336,16 @@ button {
   background-color: var(--color-bg-elevated);
   border-color: #4a4a4a;
   transform: translateX(2px);
+}
+
+/* List row hover */
+.jacques-list-row {
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.jacques-list-row:hover {
+  background-color: var(--color-bg-elevated);
+  border-color: #4a4a4a;
 }
 
 /* Status dot pulse for working state */

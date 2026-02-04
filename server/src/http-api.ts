@@ -36,6 +36,8 @@ import {
   findSessionById,
   // Project path decoding
   decodeProjectPath,
+  // Mode detection from JSONL entries
+  detectModeAndPlans,
 } from '@jacques/core';
 import type {
   ConversationManifest,
@@ -46,6 +48,9 @@ import type {
 } from '@jacques/core';
 import {
   initializeArchive,
+  getProjectPlans,
+  readLocalPlanContent,
+  readProjectIndex,
 } from '@jacques/core';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -242,10 +247,14 @@ function serveStaticFile(res: ServerResponse, filePath: string): boolean {
     }
     const content = readFileSync(filePath);
     const mimeType = getMimeType(filePath);
+    // HTML must revalidate so new builds load immediately
+    // Hashed assets (in /assets/) can be cached indefinitely
+    const isHtml = filePath.endsWith('.html');
+    const cacheControl = isHtml ? 'no-cache' : 'public, max-age=31536000, immutable';
     res.writeHead(200, {
       'Content-Type': mimeType,
       'Content-Length': content.length,
-      'Cache-Control': 'public, max-age=3600',
+      'Cache-Control': cacheControl,
     });
     res.end(content);
     return true;
@@ -261,10 +270,20 @@ export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpA
   const { port = 4243, silent = false, onApiLog, notificationService } = options;
   const log = silent ? () => {} : console.log.bind(console);
 
-  // Check if GUI is built
-  const guiAvailable = existsSync(join(GUI_DIST_PATH, 'index.html'));
+  // Check if GUI is built and up-to-date
+  const guiIndexPath = join(GUI_DIST_PATH, 'index.html');
+  const guiAvailable = existsSync(guiIndexPath);
   if (!guiAvailable && !silent) {
     log('[HTTP API] GUI not built. Run: npm run build:gui');
+  } else if (guiAvailable && !silent) {
+    const guiSrcApp = join(GUI_DIST_PATH, '..', 'src', 'App.tsx');
+    try {
+      const distMtime = statSync(guiIndexPath).mtimeMs;
+      const srcMtime = statSync(guiSrcApp).mtimeMs;
+      if (srcMtime > distMtime) {
+        log('[HTTP API] GUI build is stale. Run: npm run build:gui');
+      }
+    } catch { /* ignore - source file may not exist in production */ }
   }
 
   const server: Server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
@@ -686,6 +705,9 @@ export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpA
 
         const statistics = getEntryStatistics(entries);
 
+        // Detect mode from fresh JSONL entries (not stale cache)
+        const { mode, planRefs } = detectModeAndPlans(entries);
+
         // Count agent types from agent_progress entries
         const agentTypes = { explore: 0, plan: 0, general: 0 };
         const seenAgentIds = new Set<string>();
@@ -726,13 +748,13 @@ export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpA
         }
 
         sendJson(res, 200, {
-          planCount: sessionEntry?.planCount || 0,
+          planCount: planRefs.length || sessionEntry?.planCount || 0,
           agentCount,
           agentTypes,
           fileCount: filesModified.size,
           mcpCount: statistics.mcpCalls,
           webSearchCount: statistics.webSearches,
-          mode: sessionEntry?.mode || null,
+          mode,
           hadAutoCompact: sessionEntry?.hadAutoCompact || false,
         });
       } catch (error) {
@@ -830,6 +852,83 @@ export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpA
       return;
     }
 
+    // Route: GET /api/sessions/:id/web-searches
+    // Get web search entries with URLs from JSONL (lightweight: only returns search data)
+    if (method === 'GET' && url.match(/^\/api\/sessions\/[^/]+\/web-searches$/)) {
+      const match = url.match(/^\/api\/sessions\/([^/]+)\/web-searches$/);
+      const sessionId = match?.[1];
+
+      if (!sessionId) {
+        sendJson(res, 400, { error: 'Invalid session ID' });
+        return;
+      }
+
+      try {
+        let sessionEntry = await getSessionEntry(sessionId);
+
+        if (!sessionEntry) {
+          const sessionFile = await findSessionById(sessionId);
+          if (!sessionFile) {
+            sendJson(res, 404, { error: 'Session not found' });
+            return;
+          }
+          sendJson(res, 200, { searches: [] });
+          return;
+        }
+
+        // Parse JSONL and extract web search entries with URLs + following response
+        const entries = await parseJSONL(sessionEntry.jsonlPath);
+        const searches: Array<{
+          query: string;
+          resultCount: number;
+          urls: Array<{ title: string; url: string }>;
+          response: string;
+          timestamp: string;
+        }> = [];
+
+        const seenQueries = new Set<string>();
+        for (let i = 0; i < entries.length; i++) {
+          const entry = entries[i];
+          if (entry.type === 'web_search' && entry.content.searchType === 'results' && entry.content.searchQuery) {
+            // Deduplicate (query_update + search_results_received produce two entries)
+            if (seenQueries.has(entry.content.searchQuery)) continue;
+            seenQueries.add(entry.content.searchQuery);
+
+            // Find the next substantial assistant response after this search
+            // Skip short follow-up thoughts (<200 chars) to find the real synthesis
+            let response = '';
+            for (let j = i + 1; j < entries.length; j++) {
+              const next = entries[j];
+              if (next.type === 'assistant_message' && next.content.text) {
+                // A substantial response (>=200 chars) is likely the real answer
+                if (next.content.text.length >= 200) {
+                  response = next.content.text;
+                  break;
+                }
+              }
+              // Stop looking if we hit another web search or user message (different turn)
+              if (next.type === 'user_message' || (next.type === 'web_search' && next.content.searchType === 'results')) {
+                break;
+              }
+            }
+
+            searches.push({
+              query: entry.content.searchQuery,
+              resultCount: entry.content.searchResultCount || 0,
+              urls: entry.content.searchUrls || [],
+              response,
+              timestamp: entry.timestamp,
+            });
+          }
+        }
+
+        sendJson(res, 200, { searches });
+      } catch (error) {
+        sendJson(res, 500, { error: 'Failed to get web searches' });
+      }
+      return;
+    }
+
     // Route: GET /api/sessions/:id/plans/:messageIndex
     // Get a plan's content from a specific message in the session
     if (method === 'GET' && url.match(/^\/api\/sessions\/[^/]+\/plans\/\d+$/)) {
@@ -871,9 +970,8 @@ export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpA
           return;
         }
 
-        // For embedded plans, we need to read from the JSONL entry
         if (planRef.source === 'embedded') {
-          // Parse JSONL to get the message content
+          // For embedded plans, read from the JSONL entry
           const entries = await parseJSONL(sessionEntry.jsonlPath);
           const entry = entries[messageIndex];
 
@@ -901,6 +999,16 @@ export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpA
             messageIndex: planRef.messageIndex,
             content: planContent,
           });
+        } else if (planRef.source === 'agent') {
+          // For agent plans, the content is served via the subagent endpoint
+          // Return metadata pointing to the subagent
+          sendJson(res, 200, {
+            title: planRef.title,
+            source: planRef.source,
+            messageIndex: planRef.messageIndex,
+            agentId: (planRef as { agentId?: string }).agentId,
+            content: 'Use /api/sessions/:id/subagents/:agentId to get agent plan content.',
+          });
         } else {
           // For written plans, read from file
           if (!planRef.filePath) {
@@ -923,6 +1031,71 @@ export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpA
         }
       } catch (error) {
         sendJson(res, 500, { error: 'Failed to get plan' });
+      }
+      return;
+    }
+
+    // Route: GET /api/projects/:encodedPath/plans
+    // Get plan catalog for a project from .jacques/index.json
+    if (method === 'GET' && url.match(/^\/api\/projects\/[^/]+\/plans$/)) {
+      const match = url.match(/^\/api\/projects\/([^/]+)\/plans$/);
+      const encodedPath = match?.[1];
+
+      if (!encodedPath) {
+        sendJson(res, 400, { error: 'Invalid project path' });
+        return;
+      }
+
+      try {
+        const projectPath = await decodeProjectPath(decodeURIComponent(encodedPath));
+        const plans = await getProjectPlans(projectPath);
+        sendJson(res, 200, { plans });
+      } catch (error) {
+        sendJson(res, 500, { error: 'Failed to get project plans' });
+      }
+      return;
+    }
+
+    // Route: GET /api/projects/:encodedPath/plans/:planId/content
+    // Get a plan's content from the catalog
+    if (method === 'GET' && url.match(/^\/api\/projects\/[^/]+\/plans\/[^/]+\/content$/)) {
+      const match = url.match(/^\/api\/projects\/([^/]+)\/plans\/([^/]+)\/content$/);
+      const encodedPath = match?.[1];
+      const planId = match?.[2];
+
+      if (!encodedPath || !planId) {
+        sendJson(res, 400, { error: 'Invalid project path or plan ID' });
+        return;
+      }
+
+      try {
+        const projectPath = await decodeProjectPath(decodeURIComponent(encodedPath));
+        const index = await readProjectIndex(projectPath);
+        const plan = index.plans.find(p => p.id === planId);
+
+        if (!plan) {
+          sendJson(res, 404, { error: 'Plan not found in catalog' });
+          return;
+        }
+
+        const content = await readLocalPlanContent(projectPath, plan);
+        if (!content) {
+          sendJson(res, 404, { error: 'Plan file not found' });
+          return;
+        }
+
+        sendJson(res, 200, {
+          id: plan.id,
+          title: plan.title,
+          filename: plan.filename,
+          contentHash: plan.contentHash,
+          sessions: plan.sessions,
+          createdAt: plan.createdAt,
+          updatedAt: plan.updatedAt,
+          content,
+        });
+      } catch (error) {
+        sendJson(res, 500, { error: 'Failed to get plan content' });
       }
       return;
     }

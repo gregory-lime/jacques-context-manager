@@ -2,10 +2,8 @@
  * Notification provider + hook for Jacques GUI.
  *
  * Detects session events (context thresholds, large operations, plans,
- * auto-compact, handoffs) and pushes them to the persistent notificationStore.
- *
- * Desktop OS notifications are handled server-side via node-notifier.
- * This hook only manages GUI-side detection and in-app notification center.
+ * auto-compact, handoffs) and fires both in-app toasts and browser
+ * Notification API alerts.
  */
 
 import {
@@ -17,13 +15,15 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { notificationStore, type NotificationCategory, type NotificationPriority } from '../components/ui/NotificationStore';
-import type { Session, ClaudeOperation } from '../types';
-import type { SessionBadges } from '../api';
+import { toastStore } from '../components/ui/ToastContainer';
+import { notificationStore } from '../components/ui/NotificationStore';
+import type { ToastPriority } from '../components/ui/Toast';
+import type { Session, ClaudeOperation, SessionBadges } from '../types';
 import {
   DEFAULT_SETTINGS,
   COOLDOWNS,
   STORAGE_KEY,
+  type NotificationCategory,
   type NotificationSettings,
 } from '../notifications/types';
 
@@ -35,6 +35,8 @@ interface NotificationContextValue {
   settings: NotificationSettings;
   updateSettings: (patch: Partial<NotificationSettings>) => void;
   toggleCategory: (cat: NotificationCategory) => void;
+  browserPermission: NotificationPermission | 'unsupported';
+  requestBrowserPermission: () => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationContextValue | null>(null);
@@ -58,6 +60,28 @@ function saveSettings(s: NotificationSettings) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
 }
 
+function getBrowserPermission(): NotificationPermission | 'unsupported' {
+  if (typeof Notification === 'undefined') return 'unsupported';
+  return Notification.permission;
+}
+
+/** Send a browser notification (only when tab is unfocused). */
+function fireBrowserNotification(
+  title: string,
+  body: string,
+  tag: string,
+) {
+  if (typeof Notification === 'undefined') return;
+  if (Notification.permission !== 'granted') return;
+  if (document.hasFocus()) return;
+
+  new Notification(title, {
+    body,
+    tag, // replaces previous notification with same tag
+    icon: '/jacsub.png',
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Provider
 // ---------------------------------------------------------------------------
@@ -76,6 +100,7 @@ export function NotificationProvider({
   badges,
 }: NotificationProviderProps) {
   const [settings, setSettings] = useState<NotificationSettings>(loadSettings);
+  const [browserPermission, setBrowserPermission] = useState<NotificationPermission | 'unsupported'>(getBrowserPermission);
 
   // Persist settings
   useEffect(() => { saveSettings(settings); }, [settings]);
@@ -100,6 +125,12 @@ export function NotificationProvider({
     }));
   }, []);
 
+  const requestBrowserPermission = useCallback(async () => {
+    if (typeof Notification === 'undefined') return;
+    const result = await Notification.requestPermission();
+    setBrowserPermission(result);
+  }, []);
+
   // ---- cooldown gate ----
 
   const canFire = useCallback((category: NotificationCategory, key: string): boolean => {
@@ -118,23 +149,27 @@ export function NotificationProvider({
     key: string,
     title: string,
     body: string,
-    priority: NotificationPriority,
-    sessionId?: string,
+    priority: ToastPriority,
   ) => {
     if (!settings.enabled) return;
     if (!settings.categories[category]) return;
     if (!canFire(category, key)) return;
 
-    // Push to persistent notification store (not toasts)
+    // Push in-app toast (ephemeral, auto-dismissing)
+    toastStore.push({ title, body, priority, category });
+
+    // Push to persistent notification store (for NotificationCenter history)
     notificationStore.push({
-      id: `gui-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: `${category}-${key}-${Date.now()}`,
       title,
       body,
       priority,
       category,
       timestamp: Date.now(),
-      sessionId,
     });
+
+    // Browser notification when unfocused
+    fireBrowserNotification(title, body, `jacques-${category}-${key}`);
   }, [settings, canFire]);
 
   // ---- event detection: context thresholds ----
@@ -160,7 +195,7 @@ export function NotificationProvider({
         if (pct >= threshold && prevPct < threshold && !fired.has(threshold)) {
           fired.add(threshold);
 
-          const priority: NotificationPriority =
+          const priority: ToastPriority =
             threshold >= 90 ? 'critical' :
             threshold >= 70 ? 'high' : 'medium';
 
@@ -171,7 +206,6 @@ export function NotificationProvider({
             `Context ${threshold}%`,
             `"${label}" reached ${Math.round(pct)}% context usage`,
             priority,
-            session.session_id,
           );
         }
       }
@@ -233,7 +267,6 @@ export function NotificationProvider({
           'Plan Created',
           `New plan detected in "${label}"`,
           'medium',
-          sessionId,
         );
       }
 
@@ -247,7 +280,6 @@ export function NotificationProvider({
           'Auto-Compact Triggered',
           `"${label}" was automatically compacted`,
           'high',
-          sessionId,
         );
       }
     }
@@ -261,6 +293,8 @@ export function NotificationProvider({
         settings,
         updateSettings,
         toggleCategory,
+        browserPermission,
+        requestBrowserPermission,
       }}
     >
       {children}

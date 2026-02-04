@@ -1,9 +1,7 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Outlet, NavLink, useLocation, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
-  FolderOpen,
-  MessageSquare,
   Archive,
   BookOpen,
   Settings,
@@ -16,14 +14,14 @@ import { useProjectScope } from '../hooks/useProjectScope.js';
 import { getSourcesStatus } from '../api';
 import type { SourcesStatus } from '../api';
 import { MultiLogPanel } from './MultiLogPanel';
+import { SidebarSessionList } from './SidebarSessionList';
 import { SectionHeader, ToastContainer, NotificationCenter } from './ui';
 import { NotificationProvider } from '../hooks/useNotifications';
 import { useSessionBadges } from '../hooks/useSessionBadges';
+import { useOpenSessions } from '../hooks/useOpenSessions';
 
 const navItems = [
   { path: '/', label: 'Dashboard', Icon: LayoutDashboard },
-  { path: '/project', label: 'Project', Icon: FolderOpen },
-  { path: '/conversations', label: 'Conversations', Icon: MessageSquare },
   { path: '/archive', label: 'Archive', Icon: Archive },
   { path: '/context', label: 'Context', Icon: BookOpen },
 ];
@@ -32,6 +30,7 @@ export function Layout() {
   const location = useLocation();
   const { sessions, serverLogs, claudeOperations, apiLogs } = useJacquesClient();
   const { selectedProject, setSelectedProject, archivedProjects } = useProjectScope();
+  const { state: openSessionsState, viewDashboard } = useOpenSessions();
   const [sourceStatus, setSourceStatus] = useState<SourcesStatus>({
     obsidian: { connected: false },
     googleDocs: { connected: false },
@@ -106,19 +105,29 @@ export function Layout() {
             const isActive = location.pathname === item.path ||
               (item.path !== '/' && location.pathname.startsWith(item.path));
 
+            const handleClick = item.path === '/' && isActive && openSessionsState.activeViewId
+              ? (e: React.MouseEvent) => {
+                  e.preventDefault();
+                  viewDashboard();
+                }
+              : undefined;
+
             return (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                style={{
-                  ...styles.navLink,
-                  ...(isActive ? styles.navLinkActive : {}),
-                }}
-              >
-                {isActive && <span style={styles.activeIndicator} />}
-                <item.Icon size={16} style={{ flexShrink: 0, opacity: isActive ? 1 : 0.6 }} />
-                <span>{item.label}</span>
-              </NavLink>
+              <React.Fragment key={item.path}>
+                <NavLink
+                  to={item.path}
+                  onClick={handleClick}
+                  style={{
+                    ...styles.navLink,
+                    ...(isActive ? styles.navLinkActive : {}),
+                  }}
+                >
+                  {isActive && <span style={styles.activeIndicator} />}
+                  <item.Icon size={16} style={{ flexShrink: 0, opacity: isActive ? 1 : 0.6 }} />
+                  <span>{item.label}</span>
+                </NavLink>
+                {item.path === '/' && <SidebarSessionList />}
+              </React.Fragment>
             );
           })}
         </nav>

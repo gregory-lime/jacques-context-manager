@@ -155,6 +155,8 @@ export {
   isSessionArchived,
   archiveSessionFile,
   initializeArchive,
+  // Plan cataloger
+  catalogPlan,
   // Subagent store
   archiveSubagent,
   readSubagent,
@@ -190,6 +192,7 @@ export type {
   ArchivedSubagent,
   SubagentReference,
   SubagentTokenStats,
+  CatalogPlanInput,
 } from "./archive/index.js";
 
 // Context module
@@ -428,6 +431,7 @@ export {
   getSessionsByProject,
   getIndexStats as getCacheIndexStats,
   invalidateIndex,
+  detectModeAndPlans,
 } from "./cache/index.js";
 
 export type {

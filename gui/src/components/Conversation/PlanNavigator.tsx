@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { FileText, PenTool, ChevronDown, ChevronRight } from 'lucide-react';
+import { FileText, PenTool, Bot, ChevronDown, ChevronRight } from 'lucide-react';
 import type { ConversationMessage, ToolUseContent } from '../../types';
 import { colors } from '../../styles/theme';
 
@@ -12,17 +12,19 @@ interface PlanNavigatorProps {
 
 export interface PlanInfo {
   title: string;
-  source: 'embedded' | 'write';
+  source: 'embedded' | 'write' | 'agent';
   messageIndex: number;
   filePath?: string;
+  agentId?: string;
 }
 
 interface DetectedPlan {
   title: string;
-  source: 'embedded' | 'write';
+  source: 'embedded' | 'write' | 'agent';
   messageIndex: number;
   contentIndex?: number;
   filePath?: string;
+  agentId?: string;
   preview: string;
 }
 
@@ -98,9 +100,12 @@ function looksLikeMarkdownPlan(content: string): boolean {
 /**
  * Get icon and color for plan source
  */
-function getPlanSourceStyle(source: 'embedded' | 'write'): { icon: ReactNode; color: string; label: string } {
+function getPlanSourceStyle(source: 'embedded' | 'write' | 'agent'): { icon: ReactNode; color: string; label: string } {
   if (source === 'embedded') {
     return { icon: <FileText size={12} />, color: '#34D399', label: 'Embedded' };
+  }
+  if (source === 'agent') {
+    return { icon: <Bot size={12} />, color: '#A78BFA', label: 'Agent' };
   }
   return { icon: <PenTool size={12} />, color: '#60A5FA', label: 'Written' };
 }
@@ -112,7 +117,8 @@ function getPlanSourceStyle(source: 'embedded' | 'write'): { icon: ReactNode; co
 function extractPlanTitle(content: string): string {
   const headingMatch = content.match(/^#\s+(.+)$/m);
   if (headingMatch) {
-    return headingMatch[1].trim();
+    // Strip "Plan:" prefix if present
+    return headingMatch[1].trim().replace(/^Plan:\s*/i, '');
   }
   const firstLine = content.split('\n')[0].trim();
   if (firstLine.length <= 50) {
@@ -148,8 +154,7 @@ export function PlanNavigator({
 
               // Validate plan content (>100 chars and has markdown heading)
               if (planContent.length >= 100 && looksLikeMarkdownPlan(planContent)) {
-                const rawTitle = extractPlanTitle(planContent);
-                const title = rawTitle.startsWith('Plan:') ? rawTitle : `Plan: ${rawTitle}`;
+                const title = extractPlanTitle(planContent);
                 const preview = planContent.split('\n').slice(0, 2).join(' ').substring(0, 60);
 
                 plans.push({
@@ -166,8 +171,10 @@ export function PlanNavigator({
       }
     }
 
-    // Check assistant messages for Write tool calls to plan files
+    // Check assistant messages for Write tool calls to plan files and Plan agent responses
     if (msg.role === 'assistant') {
+      const seenAgentIds = new Set<string>();
+
       msg.content.forEach((content, contentIdx) => {
         if (content.type === 'tool_use') {
           const toolContent = content as ToolUseContent;
@@ -192,7 +199,7 @@ export function PlanNavigator({
               const preview = fileContent.split('\n').slice(0, 2).join(' ').substring(0, 60);
 
               plans.push({
-                title: title.startsWith('Plan:') ? title : `Plan: ${title}`,
+                title,
                 source: 'write',
                 messageIndex: msgIndex,
                 contentIndex: contentIdx,
@@ -200,6 +207,27 @@ export function PlanNavigator({
                 preview: preview + (preview.length >= 60 ? '...' : ''),
               });
             }
+          }
+        }
+
+        // Detect Plan agent responses
+        if (content.type === 'agent_progress') {
+          const agentContent = content as import('../../types').AgentProgressContent;
+          if (
+            agentContent.agentType === 'Plan' &&
+            agentContent.agentId &&
+            !seenAgentIds.has(agentContent.agentId)
+          ) {
+            seenAgentIds.add(agentContent.agentId);
+            const description = agentContent.agentDescription || 'Agent-Generated Plan';
+            plans.push({
+              title: description,
+              source: 'agent',
+              messageIndex: msgIndex,
+              contentIndex: contentIdx,
+              agentId: agentContent.agentId,
+              preview: agentContent.prompt?.substring(0, 60) || description,
+            });
           }
         }
       });
@@ -211,15 +239,15 @@ export function PlanNavigator({
   }
 
   // Group by source type
-  const bySource = new Map<'embedded' | 'write', DetectedPlan[]>();
+  const bySource = new Map<'embedded' | 'write' | 'agent', DetectedPlan[]>();
   for (const plan of plans) {
     const list = bySource.get(plan.source) || [];
     list.push(plan);
     bySource.set(plan.source, list);
   }
 
-  // Sort sources: Embedded first, then Written
-  const sourceOrder: Array<'embedded' | 'write'> = ['embedded', 'write'];
+  // Sort sources: Embedded first, then Agent, then Written
+  const sourceOrder: Array<'embedded' | 'agent' | 'write'> = ['embedded', 'agent', 'write'];
   const sortedSources = Array.from(bySource.keys()).sort((a, b) => {
     return sourceOrder.indexOf(a) - sourceOrder.indexOf(b);
   });
@@ -295,6 +323,7 @@ export function PlanNavigator({
                           source: plan.source,
                           messageIndex: plan.messageIndex,
                           filePath: plan.filePath,
+                          agentId: plan.agentId,
                         })}
                         title="View full plan"
                         type="button"

@@ -142,7 +142,8 @@ export function extractPlanTitle(content: string): string {
   // Try to find first markdown heading
   const headingMatch = content.match(/^#\s+(.+)$/m);
   if (headingMatch) {
-    return headingMatch[1].trim();
+    // Strip "Plan:" prefix if present — titles should be just the name
+    return headingMatch[1].trim().replace(/^Plan:\s*/i, "");
   }
 
   // Fallback: use first line

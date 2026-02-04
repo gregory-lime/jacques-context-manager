@@ -1,18 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Archive as ArchiveIcon, RefreshCw } from 'lucide-react';
 import { colors } from '../styles/theme';
-import { ConversationViewer } from '../components/Conversation';
 import { TerminalPanel, SearchInput, Badge, SectionHeader, EmptyState } from '../components/ui';
-import type { SavedConversation, ConversationMessage, MessageContent } from '../types';
+import { useOpenSessions } from '../hooks/useOpenSessions';
 import {
   getSessionStats,
   listSessionsByProject,
-  getSession,
   rebuildSessionIndex,
   type SessionStats,
   type SessionEntry,
   type RebuildProgress,
-  type ParsedEntry,
 } from '../api';
 
 // Format date to readable string
@@ -43,265 +41,14 @@ function formatTokenCount(count: number): string {
   return count.toString();
 }
 
-/**
- * Transform ParsedEntry array to ConversationMessage array for the viewer
- */
-function transformEntriesToMessages(
-  entries: ParsedEntry[],
-  subagentTokenMap?: Map<string, { tokenCount: number; messageCount: number; model?: string }>
-): ConversationMessage[] {
-  const messages: ConversationMessage[] = [];
-  let currentAssistantMessage: ConversationMessage | null = null;
-  const seenAgentIds = new Set<string>();
-
-  for (const entry of entries) {
-    if (entry.type === 'user_message') {
-      const text = entry.content.text || '';
-      const isClearCommand = text.includes('<command-name>/clear</command-name>');
-      if (
-        !isClearCommand && (
-          text.startsWith('<local-command-caveat>') ||
-          text.startsWith('<command-name>') ||
-          text.startsWith('<local-command-stdout>') ||
-          text.startsWith('<command-message>') ||
-          text.startsWith('<command-args>') ||
-          text.trim().length === 0
-        )
-      ) {
-        continue;
-      }
-
-      if (currentAssistantMessage) {
-        messages.push(currentAssistantMessage);
-        currentAssistantMessage = null;
-      }
-      messages.push({
-        id: entry.uuid,
-        role: 'user',
-        timestamp: new Date(entry.timestamp).getTime(),
-        content: entry.content.text ? [{ type: 'text', text: entry.content.text }] : [],
-      });
-    } else if (entry.type === 'assistant_message') {
-      if (currentAssistantMessage) {
-        messages.push(currentAssistantMessage);
-      }
-      const content: MessageContent[] = [];
-      if (entry.content.thinking) {
-        content.push({ type: 'thinking', text: entry.content.thinking });
-      }
-      if (entry.content.text) {
-        content.push({ type: 'text', text: entry.content.text });
-      }
-      currentAssistantMessage = {
-        id: entry.uuid,
-        role: 'assistant',
-        timestamp: new Date(entry.timestamp).getTime(),
-        content,
-        tokens: entry.content.usage
-          ? {
-              input: entry.content.usage.inputTokens,
-              output: entry.content.usage.outputTokens,
-              cacheCreation: entry.content.usage.cacheCreation,
-              cacheRead: entry.content.usage.cacheRead,
-            }
-          : undefined,
-        model: entry.content.model,
-        durationMs: entry.content.durationMs,
-        costUSD: entry.content.costUSD,
-      };
-    } else if (entry.type === 'tool_call') {
-      if (!currentAssistantMessage) {
-        currentAssistantMessage = {
-          id: `assistant-${entry.uuid}`,
-          role: 'assistant',
-          timestamp: new Date(entry.timestamp).getTime(),
-          content: [],
-          tokens: entry.content.usage
-            ? {
-                input: entry.content.usage.inputTokens,
-                output: entry.content.usage.outputTokens,
-                cacheCreation: entry.content.usage.cacheCreation,
-                cacheRead: entry.content.usage.cacheRead,
-              }
-            : undefined,
-          model: entry.content.model,
-          durationMs: entry.content.durationMs,
-          costUSD: entry.content.costUSD,
-        };
-      } else if (entry.content.usage) {
-        if (!currentAssistantMessage.tokens) {
-          currentAssistantMessage.tokens = { input: 0, output: 0 };
-        }
-        currentAssistantMessage.tokens.input =
-          (currentAssistantMessage.tokens.input || 0) + (entry.content.usage.inputTokens || 0);
-        currentAssistantMessage.tokens.output =
-          (currentAssistantMessage.tokens.output || 0) + (entry.content.usage.outputTokens || 0);
-        currentAssistantMessage.tokens.cacheCreation =
-          (currentAssistantMessage.tokens.cacheCreation || 0) + (entry.content.usage.cacheCreation || 0);
-        currentAssistantMessage.tokens.cacheRead =
-          (currentAssistantMessage.tokens.cacheRead || 0) + (entry.content.usage.cacheRead || 0);
-        if (entry.content.costUSD) {
-          currentAssistantMessage.costUSD = (currentAssistantMessage.costUSD || 0) + entry.content.costUSD;
-        }
-        if (entry.content.durationMs) {
-          currentAssistantMessage.durationMs = (currentAssistantMessage.durationMs || 0) + entry.content.durationMs;
-        }
-      }
-      currentAssistantMessage.content.push({
-        type: 'tool_use',
-        id: entry.uuid,
-        name: entry.content.toolName || 'Unknown',
-        input: entry.content.toolInput || {},
-      });
-    } else if (entry.type === 'tool_result') {
-      if (currentAssistantMessage) {
-        currentAssistantMessage.content.push({
-          type: 'tool_result',
-          tool_use_id: entry.uuid,
-          content: entry.content.toolResultContent || '',
-          is_error: false,
-        });
-      }
-    } else if (entry.type === 'agent_progress') {
-      const agentId = entry.content.agentId;
-      if (!agentId || seenAgentIds.has(agentId)) {
-        continue;
-      }
-      seenAgentIds.add(agentId);
-
-      if (!currentAssistantMessage) {
-        currentAssistantMessage = {
-          id: `assistant-${entry.uuid}`,
-          role: 'assistant',
-          timestamp: new Date(entry.timestamp).getTime(),
-          content: [],
-        };
-      }
-
-      const subagentInfo = subagentTokenMap ? subagentTokenMap.get(agentId) : undefined;
-      currentAssistantMessage.content.push({
-        type: 'agent_progress',
-        prompt: entry.content.agentPrompt,
-        agentId: agentId,
-        tokenCount: subagentInfo?.tokenCount,
-        messageCount: subagentInfo?.messageCount,
-        model: subagentInfo?.model,
-        agentType: entry.content.agentType,
-        agentDescription: entry.content.agentDescription,
-      });
-    } else if (entry.type === 'bash_progress') {
-      if (!currentAssistantMessage) {
-        currentAssistantMessage = {
-          id: `assistant-${entry.uuid}`,
-          role: 'assistant',
-          timestamp: new Date(entry.timestamp).getTime(),
-          content: [],
-        };
-      }
-      currentAssistantMessage.content.push({
-        type: 'bash_progress',
-        output: entry.content.bashOutput,
-        fullOutput: entry.content.bashFullOutput,
-        elapsedSeconds: entry.content.bashElapsedSeconds,
-        totalLines: entry.content.bashTotalLines,
-      });
-    } else if (entry.type === 'mcp_progress') {
-      if (!currentAssistantMessage) {
-        currentAssistantMessage = {
-          id: `assistant-${entry.uuid}`,
-          role: 'assistant',
-          timestamp: new Date(entry.timestamp).getTime(),
-          content: [],
-        };
-      }
-      currentAssistantMessage.content.push({
-        type: 'mcp_progress',
-        status: entry.content.mcpStatus,
-        serverName: entry.content.mcpServerName,
-        toolName: entry.content.mcpToolName,
-      });
-    } else if (entry.type === 'web_search') {
-      if (!currentAssistantMessage) {
-        currentAssistantMessage = {
-          id: `assistant-${entry.uuid}`,
-          role: 'assistant',
-          timestamp: new Date(entry.timestamp).getTime(),
-          content: [],
-        };
-      }
-      currentAssistantMessage.content.push({
-        type: 'web_search',
-        searchType: entry.content.searchType,
-        query: entry.content.searchQuery,
-        resultCount: entry.content.searchResultCount,
-        urls: entry.content.searchUrls,
-      });
-    }
-  }
-
-  if (currentAssistantMessage) {
-    messages.push(currentAssistantMessage);
-  }
-
-  return messages;
-}
-
-/**
- * Transform session data to SavedConversation format
- */
-function transformToSavedConversation(
-  sessionEntry: SessionEntry,
-  entries: ParsedEntry[],
-  statistics: {
-    totalInputTokens: number;
-    totalOutputTokens: number;
-    totalCacheCreation: number;
-    totalCacheRead: number;
-    toolCalls: number;
-    userMessages: number;
-    assistantMessages: number;
-  },
-  subagents?: Array<{ id: string; sessionId: string }>
-): SavedConversation {
-  const messages = transformEntriesToMessages(entries);
-
-  return {
-    id: sessionEntry.id,
-    sessionId: sessionEntry.id,
-    title: sessionEntry.title,
-    project: sessionEntry.projectSlug,
-    date: sessionEntry.endedAt.split('T')[0],
-    messages,
-    metadata: {
-      messageCount: sessionEntry.messageCount,
-      toolCallCount: sessionEntry.toolCallCount,
-      estimatedTokens: 0,
-      actualTokens: {
-        input: statistics.totalInputTokens,
-        output: statistics.totalOutputTokens,
-        cacheCreation: statistics.totalCacheCreation > 0 ? statistics.totalCacheCreation : undefined,
-        cacheRead: statistics.totalCacheRead > 0 ? statistics.totalCacheRead : undefined,
-      },
-      subagents: subagents && subagents.length > 0
-        ? {
-            count: subagents.length,
-            totalTokens: 0,
-            ids: subagents.map(s => s.id),
-          }
-        : undefined,
-      hadAutoCompact: sessionEntry.hadAutoCompact,
-      autoCompactAt: sessionEntry.autoCompactAt,
-    },
-  };
-}
-
 export function Archive() {
+  const navigate = useNavigate();
+  const { openSession } = useOpenSessions();
   const [stats, setStats] = useState<SessionStats | null>(null);
   const [projectSessions, setProjectSessions] = useState<Record<string, SessionEntry[]>>({});
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SessionEntry[] | null>(null);
-  const [selectedConversation, setSelectedConversation] = useState<SavedConversation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rebuildProgress, setRebuildProgress] = useState<RebuildProgress | null>(null);
@@ -368,20 +115,14 @@ export function Archive() {
     });
   };
 
-  const handleSessionClick = async (session: SessionEntry) => {
-    try {
-      setError(null);
-      const data = await getSession(session.id);
-      const saved = transformToSavedConversation(
-        data.metadata,
-        data.entries,
-        data.statistics,
-        data.subagents
-      );
-      setSelectedConversation(saved);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load session');
-    }
+  const handleSessionClick = (session: SessionEntry) => {
+    openSession({
+      id: session.id,
+      type: 'archived',
+      title: session.title,
+      project: session.projectSlug,
+    });
+    navigate('/');
   };
 
   const toggleProject = (project: string) => {
@@ -395,15 +136,6 @@ export function Archive() {
       return next;
     });
   };
-
-  if (selectedConversation) {
-    return (
-      <ConversationViewer
-        conversation={selectedConversation}
-        onBack={() => setSelectedConversation(null)}
-      />
-    );
-  }
 
   const displayProjects = searchResults
     ? { 'Search Results': searchResults }

@@ -83,12 +83,16 @@ export interface SessionEntry {
   planRefs?: Array<{
     /** Plan title extracted from content */
     title: string;
-    /** Source: 'embedded' for inline plans, 'write' for Write tool plans */
-    source: 'embedded' | 'write';
+    /** Source: 'embedded' for inline plans, 'write' for Write tool plans, 'agent' for Plan subagent */
+    source: 'embedded' | 'write' | 'agent';
     /** Index of the message containing this plan */
     messageIndex: number;
     /** File path if plan was written to disk */
     filePath?: string;
+    /** Agent ID for Plan subagent source */
+    agentId?: string;
+    /** Links to PlanEntry.id in catalog (.jacques/index.json) */
+    catalogId?: string;
   }>;
   /** Explore agent references */
   exploreAgents?: Array<{
@@ -241,9 +245,11 @@ function extractTimestamps(
  */
 interface PlanRef {
   title: string;
-  source: 'embedded' | 'write';
+  source: 'embedded' | 'write' | 'agent';
   messageIndex: number;
   filePath?: string;
+  agentId?: string;
+  catalogId?: string;
 }
 
 /**
@@ -252,7 +258,7 @@ interface PlanRef {
  * - Planning mode: EnterPlanMode tool was called during session
  * - Execution mode: First user message contains plan trigger pattern
  */
-function detectModeAndPlans(entries: ParsedEntry[]): {
+export function detectModeAndPlans(entries: ParsedEntry[]): {
   mode: 'planning' | 'execution' | null;
   planRefs: PlanRef[];
 } {
@@ -296,8 +302,7 @@ function detectModeAndPlans(entries: ParsedEntry[]): {
             const planContent = text.substring(match[0].length).trim();
             // Only count as plan if it has content with markdown heading
             if (planContent.length >= 100 && planContent.includes('#')) {
-              const rawTitle = extractPlanTitle(planContent);
-              const title = rawTitle.startsWith('Plan:') ? rawTitle : `Plan: ${rawTitle}`;
+              const title = extractPlanTitle(planContent);
               planRefs.push({
                 title,
                 source: 'embedded',
@@ -330,8 +335,7 @@ function detectModeAndPlans(entries: ParsedEntry[]): {
           if (match) {
             const planContent = text.substring(match[0].length).trim();
             if (planContent.length >= 100 && planContent.includes('#')) {
-              const rawTitle = extractPlanTitle(planContent);
-              const title = rawTitle.startsWith('Plan:') ? rawTitle : `Plan: ${rawTitle}`;
+              const title = extractPlanTitle(planContent);
               // Avoid duplicate entries for the same message
               if (!planRefs.some(r => r.messageIndex === index)) {
                 planRefs.push({
@@ -344,6 +348,19 @@ function detectModeAndPlans(entries: ParsedEntry[]): {
           }
           break;
         }
+      }
+    }
+
+    // Check for Plan agent responses from agent_progress entries
+    if (entry.type === 'agent_progress' && entry.content.agentType === 'Plan') {
+      const agentId = entry.content.agentId;
+      if (agentId && !planRefs.some(r => r.source === 'agent' && r.agentId === agentId)) {
+        planRefs.push({
+          title: entry.content.agentDescription || 'Agent-Generated Plan',
+          source: 'agent',
+          messageIndex: index,
+          agentId,
+        });
       }
     }
 
@@ -393,8 +410,7 @@ function detectModeAndPlans(entries: ParsedEntry[]): {
       const looksLikeMarkdown = hasHeading && hasListOrParagraph && !looksLikeCode;
 
       if (pathLooksLikePlan && looksLikeMarkdown) {
-        const rawTitle = extractPlanTitle(content);
-        const title = rawTitle.startsWith('Plan:') ? rawTitle : `Plan: ${rawTitle}`;
+        const title = extractPlanTitle(content);
         planRefs.push({
           title,
           source: 'write',

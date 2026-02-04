@@ -17,6 +17,13 @@ if [ ! -f "dist/cli.js" ]; then
     npm run build
 fi
 
+# Check if GUI is built
+if [ ! -f "$PROJECT_DIR/gui/dist/index.html" ]; then
+    echo "GUI not built. Building..."
+    cd "$PROJECT_DIR" && npm run build:gui
+    cd "$PROJECT_DIR/dashboard"
+fi
+
 # Check if server is running
 if [ ! -S /tmp/jacques.sock ]; then
     echo "Warning: Jacques server doesn't appear to be running."

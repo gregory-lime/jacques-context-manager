@@ -27,11 +27,12 @@ export {
   getSession,
   getSubagentFromSession,
   getSessionBadges,
+  getSessionPlanContent,
+  getSessionWebSearches,
   rebuildSessionIndex,
-  // Notification API
-  getNotificationSettings,
-  updateNotificationSettings,
-  getNotificationHistory,
+  // Plan Catalog API
+  getProjectPlanCatalog,
+  getPlanCatalogContent,
 } from './config';
 
 export type {
@@ -59,7 +60,9 @@ export type {
   SubagentData,
   SessionBadges,
   RebuildProgress,
-  // Notification types
-  ServerNotificationSettings,
-  ServerNotificationItem,
+  SessionPlanContent,
+  SessionWebSearch,
+  // Plan Catalog types
+  PlanCatalogEntry,
+  PlanCatalogContent,
 } from './config';

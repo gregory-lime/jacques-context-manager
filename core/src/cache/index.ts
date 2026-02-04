@@ -27,4 +27,5 @@ export {
   getSessionsByProject,
   getIndexStats,
   invalidateIndex,
+  detectModeAndPlans,
 } from "./session-index.js";
