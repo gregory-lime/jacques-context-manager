@@ -17,8 +17,6 @@ export {
   getDefaultArchiveSettings,
   getArchiveSettings,
   setArchiveSettings,
-  getArchiveFilter,
-  setArchiveFilter,
   getAutoArchiveEnabled,
   setAutoArchiveEnabled,
   toggleAutoArchive,
@@ -27,7 +25,6 @@ export {
 
 export type {
   ClaudeSettings,
-  ArchiveFilterType,
   ArchiveSettings,
   JacquesConfig,
 } from "./settings.js";

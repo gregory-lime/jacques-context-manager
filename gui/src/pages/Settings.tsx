@@ -3,6 +3,7 @@ import { colors } from '../styles/theme';
 import { TerminalPanel, SectionHeader } from '../components/ui';
 import { useNotifications } from '../hooks/useNotifications';
 import type { NotificationCategory } from '../notifications/types';
+import { extractCatalog } from '../api/config';
 
 const CATEGORY_LABELS: Record<NotificationCategory, { label: string; description: string }> = {
   context: { label: 'Context thresholds', description: 'Alert at 50%, 70%, 90% usage' },
@@ -127,37 +128,49 @@ export function Settings() {
         <h3 style={styles.sectionTitle}>Archive Settings</h3>
 
         <div style={styles.setting}>
-          <div style={styles.settingLabel}>Archive Filter</div>
-          <div style={styles.radioGroup}>
-            <label style={styles.radioLabel}>
-              <input type="radio" name="filter" defaultChecked />
-              <span>Without Tools</span>
-              <span style={styles.radioDescription}>
-                Removes tool calls and results
-              </span>
-            </label>
-            <label style={styles.radioLabel}>
-              <input type="radio" name="filter" />
-              <span>Everything</span>
-              <span style={styles.radioDescription}>
-                Full conversation with all data
-              </span>
-            </label>
-            <label style={styles.radioLabel}>
-              <input type="radio" name="filter" />
-              <span>Messages Only</span>
-              <span style={styles.radioDescription}>
-                Just user and assistant messages
-              </span>
-            </label>
-          </div>
-        </div>
-
-        <div style={styles.setting}>
           <label style={styles.checkboxLabel}>
             <input type="checkbox" />
             <span>Auto-archive on session end</span>
           </label>
+        </div>
+
+        <div style={styles.setting}>
+          <div style={styles.settingLabel}>Catalog Extraction</div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              style={styles.permissionBtn}
+              onClick={() => {
+                extractCatalog({
+                  onComplete: () => {
+                    // Could add a toast notification here
+                  },
+                  onError: (error) => {
+                    console.error('Catalog extraction failed:', error);
+                  },
+                });
+              }}
+            >
+              Extract Catalog
+            </button>
+            <button
+              style={styles.permissionBtn}
+              onClick={() => {
+                extractCatalog({
+                  onComplete: () => {
+                    // Could add a toast notification here
+                  },
+                  onError: (error) => {
+                    console.error('Catalog re-extraction failed:', error);
+                  },
+                }, { force: true });
+              }}
+            >
+              Re-extract All
+            </button>
+          </div>
+          <span style={{ fontSize: '12px', color: colors.textMuted, marginTop: '4px', display: 'block' }}>
+            Extract sessions, plans, and subagents into the catalog for fast access
+          </span>
         </div>
       </TerminalPanel>
 

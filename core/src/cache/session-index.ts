@@ -19,6 +19,9 @@ import { homedir } from "os";
 import { parseJSONL, getEntryStatistics, type ParsedEntry } from "../session/parser.js";
 import { listSubagentFiles, decodeProjectPath, type SubagentFile } from "../session/detector.js";
 import { PLAN_TRIGGER_PATTERNS, extractPlanTitle } from "../archive/plan-extractor.js";
+import { readProjectIndex } from "../context/indexer.js";
+import type { SubagentEntry as CatalogSubagentEntry, PlanEntry as CatalogPlanEntry, SessionEntry as IndexSessionEntry } from "../context/types.js";
+import type { SessionManifest } from "../catalog/types.js";
 
 /** Claude projects directory */
 const CLAUDE_PROJECTS_PATH = path.join(homedir(), ".claude", "projects");
@@ -85,6 +88,8 @@ export interface SessionEntry {
     title: string;
     /** Source: 'embedded' for inline plans, 'write' for Write tool plans, 'agent' for Plan subagent */
     source: 'embedded' | 'write' | 'agent';
+    /** All detection methods that found this plan (when deduplicated) */
+    sources?: Array<'embedded' | 'write' | 'agent'>;
     /** Index of the message containing this plan */
     messageIndex: number;
     /** File path if plan was written to disk */
@@ -246,6 +251,8 @@ function extractTimestamps(
 interface PlanRef {
   title: string;
   source: 'embedded' | 'write' | 'agent';
+  /** All detection methods that found this plan (when deduplicated) */
+  sources?: Array<'embedded' | 'write' | 'agent'>;
   messageIndex: number;
   filePath?: string;
   agentId?: string;
@@ -655,7 +662,219 @@ export async function listAllProjects(): Promise<
 }
 
 /**
- * Scan all sessions and build the index
+ * Convert a catalog SubagentEntry (type=exploration) to an ExploreAgentRef.
+ */
+function catalogSubagentToExploreRef(entry: CatalogSubagentEntry): ExploreAgentRef {
+  return {
+    id: entry.id,
+    description: entry.title,
+    timestamp: entry.timestamp,
+    tokenCost: entry.tokenCost,
+  };
+}
+
+/**
+ * Convert a catalog SubagentEntry (type=search) to a WebSearchRef.
+ */
+function catalogSubagentToSearchRef(entry: CatalogSubagentEntry): WebSearchRef {
+  return {
+    query: entry.title,
+    resultCount: entry.resultCount || 0,
+    timestamp: entry.timestamp,
+  };
+}
+
+/**
+ * Convert a catalog PlanEntry to a partial PlanRef.
+ * messageIndex is set to 0 since catalog doesn't track this.
+ */
+function catalogPlanToPlanRef(plan: CatalogPlanEntry): PlanRef {
+  return {
+    title: plan.title,
+    source: "embedded",
+    messageIndex: 0,
+    catalogId: plan.id,
+  };
+}
+
+/**
+ * Read the session manifest JSON from .jacques/sessions/{id}.json.
+ * Returns null if file doesn't exist or is unreadable.
+ */
+async function readSessionManifest(
+  projectPath: string,
+  sessionId: string
+): Promise<SessionManifest | null> {
+  try {
+    const manifestPath = path.join(projectPath, ".jacques", "sessions", `${sessionId}.json`);
+    const content = await fs.readFile(manifestPath, "utf-8");
+    return JSON.parse(content) as SessionManifest;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build session entries from catalog data (fast path).
+ *
+ * For each project:
+ * 1. Read .jacques/index.json for catalog metadata
+ * 2. List JSONL files in the encoded project dir
+ * 3. Stat JSONL files for size/mtime (in parallel)
+ * 4. Convert catalog entries to SessionEntry
+ * 5. Identify uncataloged JSONL files for fallback parsing
+ */
+async function buildFromCatalog(
+  projects: Array<{ encodedPath: string; projectPath: string; projectSlug: string }>
+): Promise<{
+  catalogSessions: SessionEntry[];
+  uncatalogedFiles: Array<{ filePath: string; projectPath: string; projectSlug: string }>;
+}> {
+  const catalogSessions: SessionEntry[] = [];
+  const uncatalogedFiles: Array<{ filePath: string; projectPath: string; projectSlug: string }> = [];
+
+  for (const project of projects) {
+    // Read catalog index (returns empty default if missing)
+    const index = await readProjectIndex(project.projectPath);
+
+    // List JSONL files in the encoded project directory
+    let jsonlFilenames: string[] = [];
+    try {
+      const dirEntries = await fs.readdir(project.encodedPath, { withFileTypes: true });
+      jsonlFilenames = dirEntries
+        .filter((e) => e.isFile() && e.name.endsWith(".jsonl"))
+        .map((e) => e.name);
+    } catch {
+      continue; // Skip unreadable directories
+    }
+
+    // Build set of cataloged session IDs
+    const catalogedSessionIds = new Set(index.sessions.map((s) => s.id));
+
+    // Stat all JSONL files in parallel
+    const statResults = await Promise.all(
+      jsonlFilenames.map(async (filename) => {
+        const jsonlPath = path.join(project.encodedPath, filename);
+        const sessionId = path.basename(filename, ".jsonl");
+        try {
+          const stats = await fs.stat(jsonlPath);
+          return { sessionId, jsonlPath, stats, filename };
+        } catch {
+          return null; // File disappeared
+        }
+      })
+    );
+
+    for (const result of statResults) {
+      if (!result) continue;
+      const { sessionId, jsonlPath, stats } = result;
+
+      if (!catalogedSessionIds.has(sessionId)) {
+        // Not in catalog - needs JSONL parsing
+        uncatalogedFiles.push({
+          filePath: jsonlPath,
+          projectPath: project.projectPath,
+          projectSlug: project.projectSlug,
+        });
+        continue;
+      }
+
+      // Find catalog session entry
+      const catalogSession = index.sessions.find((s) => s.id === sessionId);
+      if (!catalogSession) continue;
+
+      // Staleness check: if JSONL is newer than catalog savedAt, re-parse
+      const jsonlMtime = stats.mtime.toISOString();
+      // Read the session manifest for planRefs and precise mtime check
+      const manifest = await readSessionManifest(project.projectPath, sessionId);
+
+      if (catalogSession.savedAt && jsonlMtime > catalogSession.savedAt) {
+        if (!manifest || jsonlMtime > manifest.jsonlModifiedAt) {
+          uncatalogedFiles.push({
+            filePath: jsonlPath,
+            projectPath: project.projectPath,
+            projectSlug: project.projectSlug,
+          });
+          continue;
+        }
+      }
+
+      // Map subagents from index
+      const exploreSubagents = index.subagents.filter(
+        (s) => s.sessionId === sessionId && s.type === "exploration"
+      );
+      const searchSubagents = index.subagents.filter(
+        (s) => s.sessionId === sessionId && s.type === "search"
+      );
+
+      // Use planRefs from manifest (preserves source: embedded/write/agent)
+      // Fall back to reconstructing from PlanEntry if manifest lacks planRefs
+      let planRefs: PlanRef[] = [];
+      if (manifest?.planRefs && manifest.planRefs.length > 0) {
+        // Manifest has full planRefs with correct source types
+        planRefs = manifest.planRefs.map((ref) => {
+          // Find matching catalogId from planIds
+          const catalogId = catalogSession.planIds?.find((pid) =>
+            index.plans.some((p) => p.id === pid)
+          );
+          return {
+            title: ref.title,
+            source: ref.source,
+            messageIndex: ref.messageIndex,
+            filePath: ref.filePath,
+            agentId: ref.agentId,
+            catalogId: ref.catalogId || catalogId,
+          };
+        });
+      } else if (catalogSession.planIds) {
+        // Fallback: reconstruct from PlanEntry (older manifests without planRefs)
+        for (const planId of catalogSession.planIds) {
+          const plan = index.plans.find((p) => p.id === planId);
+          if (plan) {
+            planRefs.push(catalogPlanToPlanRef(plan));
+          }
+        }
+      }
+
+      const exploreAgents = exploreSubagents.map(catalogSubagentToExploreRef);
+      const webSearches = searchSubagents.map(catalogSubagentToSearchRef);
+
+      // Build SessionEntry from catalog data + file stats
+      const entry: SessionEntry = {
+        id: sessionId,
+        jsonlPath,
+        projectPath: project.projectPath,
+        projectSlug: project.projectSlug,
+        title: catalogSession.title,
+        startedAt: catalogSession.startedAt,
+        endedAt: catalogSession.endedAt,
+        messageCount: catalogSession.messageCount,
+        toolCallCount: catalogSession.toolCallCount,
+        hasSubagents: catalogSession.hasSubagents ?? false,
+        subagentIds: catalogSession.subagentIds,
+        hadAutoCompact: catalogSession.hadAutoCompact || undefined,
+        tokens: catalogSession.tokens,
+        fileSizeBytes: stats.size,
+        modifiedAt: stats.mtime.toISOString(),
+        mode: catalogSession.mode || undefined,
+        planCount: planRefs.length > 0 ? planRefs.length : (catalogSession.planCount || undefined),
+        planRefs: planRefs.length > 0 ? planRefs : undefined,
+        exploreAgents: exploreAgents.length > 0 ? exploreAgents : undefined,
+        webSearches: webSearches.length > 0 ? webSearches : undefined,
+      };
+
+      catalogSessions.push(entry);
+    }
+  }
+
+  return { catalogSessions, uncatalogedFiles };
+}
+
+/**
+ * Scan all sessions and build the index.
+ *
+ * Uses catalog-first loading: reads pre-extracted metadata from .jacques/index.json
+ * for each project, only falling back to JSONL parsing for new/uncataloged sessions.
  */
 export async function buildSessionIndex(options?: {
   /** Progress callback - called for each session scanned */
@@ -667,7 +886,6 @@ export async function buildSessionIndex(options?: {
   }) => void;
 }): Promise<SessionIndex> {
   const { onProgress } = options || {};
-  const sessions: SessionEntry[] = [];
 
   onProgress?.({
     phase: "scanning",
@@ -679,42 +897,29 @@ export async function buildSessionIndex(options?: {
   // Get all projects
   const projects = await listAllProjects();
 
-  // Collect all JSONL files first
-  const jsonlFiles: Array<{
-    filePath: string;
-    projectPath: string;
-    projectSlug: string;
-  }> = [];
+  // Phase 1: Read catalog data (fast - reads .jacques/index.json + stats JSONL files)
+  const { catalogSessions, uncatalogedFiles } = await buildFromCatalog(projects);
 
-  for (const project of projects) {
-    try {
-      const entries = await fs.readdir(project.encodedPath, {
-        withFileTypes: true,
-      });
+  const totalFiles = catalogSessions.length + uncatalogedFiles.length;
 
-      for (const entry of entries) {
-        if (entry.isFile() && entry.name.endsWith(".jsonl")) {
-          jsonlFiles.push({
-            filePath: path.join(project.encodedPath, entry.name),
-            projectPath: project.projectPath,
-            projectSlug: project.projectSlug,
-          });
-        }
-      }
-    } catch {
-      // Skip projects we can't read
-    }
-  }
+  onProgress?.({
+    phase: "processing",
+    total: totalFiles,
+    completed: catalogSessions.length,
+    current: `${catalogSessions.length} from catalog, ${uncatalogedFiles.length} to parse...`,
+  });
 
-  // Process each JSONL file
-  for (let i = 0; i < jsonlFiles.length; i++) {
-    const file = jsonlFiles[i];
+  // Phase 2: Parse only uncataloged/stale sessions (slow path - only for new sessions)
+  const sessions: SessionEntry[] = [...catalogSessions];
+
+  for (let i = 0; i < uncatalogedFiles.length; i++) {
+    const file = uncatalogedFiles[i];
     const sessionId = path.basename(file.filePath, ".jsonl");
 
     onProgress?.({
       phase: "processing",
-      total: jsonlFiles.length,
-      completed: i,
+      total: totalFiles,
+      completed: catalogSessions.length + i,
       current: `${file.projectSlug}/${sessionId.substring(0, 8)}...`,
     });
 
@@ -746,8 +951,8 @@ export async function buildSessionIndex(options?: {
 
   onProgress?.({
     phase: "processing",
-    total: jsonlFiles.length,
-    completed: jsonlFiles.length,
+    total: totalFiles,
+    completed: totalFiles,
     current: "Complete",
   });
 

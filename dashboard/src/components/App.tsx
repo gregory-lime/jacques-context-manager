@@ -34,7 +34,6 @@ import {
   flattenTree,
   addContext,
   getArchiveSettings,
-  setArchiveFilter,
   toggleAutoArchive,
   getArchivePath,
   getArchiveStats,
@@ -82,7 +81,6 @@ import type {
   ObsidianFile,
   FileTreeNode,
   FlatTreeItem,
-  ArchiveFilterType,
   HandoffEntry,
   LLMHandoffResult,
   LLMStreamCallbacks,
@@ -105,7 +103,6 @@ import { GOOGLE_DOCS_VISIBLE_ITEMS } from "./GoogleDocsBrowserView.js";
 import { NOTION_VISIBLE_ITEMS } from "./NotionBrowserView.js";
 import { VISIBLE_SESSIONS, VISIBLE_PLANS } from "./ProjectDashboardView.js";
 import { PLAN_VIEWER_VISIBLE_LINES } from "./PlanViewerView.js";
-import { FILTER_OPTIONS } from "./SettingsView.js";
 import type { ArchiveStatsData } from "./SettingsView.js";
 import { spawn, exec } from "child_process";
 
@@ -192,7 +189,6 @@ export function App(): React.ReactElement {
   // Settings state
   const [settingsIndex, setSettingsIndex] = useState<number>(0);
   const [settingsScrollOffset, setSettingsScrollOffset] = useState<number>(0);
-  const [archiveFilter, setArchiveFilterState] = useState<ArchiveFilterType>("without_tools");
   const [autoArchiveEnabled, setAutoArchiveEnabled] = useState<boolean>(false);
   const [archiveStats, setArchiveStats] = useState<ArchiveStatsData | null>(null);
   const [archiveStatsLoading, setArchiveStatsLoading] = useState<boolean>(false);
@@ -335,14 +331,9 @@ export function App(): React.ReactElement {
           setSessionFile(null);
           setParsedEntries([]);
 
-          // Load the archive filter from settings
-          const archiveSettings = getArchiveSettings();
-          const filterFromSettings = archiveSettings.filter === "everything"
-            ? FilterType.EVERYTHING
-            : archiveSettings.filter === "without_tools"
-            ? FilterType.WITHOUT_TOOLS
-            : FilterType.MESSAGES_ONLY;
-          setSelectedFilterType(filterFromSettings);
+          // Use WITHOUT_TOOLS as the default filter for saving
+          const saveFilterType = FilterType.WITHOUT_TOOLS;
+          setSelectedFilterType(saveFilterType);
 
           // Get working directory from focused session
           const cwd =
@@ -392,12 +383,12 @@ export function App(): React.ReactElement {
             setParsedEntries(entries);
 
             // Apply filter and get preview
-            const filteredEntries = applyFilter(entries, filterFromSettings);
+            const filteredEntries = applyFilter(entries, saveFilterType);
             const sessionSlug =
               focusedSession.session_title || detected.sessionId.substring(0, 8);
             const preview = getSessionPreview(filteredEntries, sessionSlug);
             // Add filter label from config
-            const filterConfig = FILTER_CONFIGS[filterFromSettings];
+            const filterConfig = FILTER_CONFIGS[saveFilterType];
             setSavePreview({
               ...preview,
               filterLabel: filterConfig.label,
@@ -527,7 +518,6 @@ export function App(): React.ReactElement {
         case "4": // Settings
           // Load current settings
           const settings = getArchiveSettings();
-          setArchiveFilterState(settings.filter);
           setAutoArchiveEnabled(settings.autoArchive);
           setSettingsIndex(0);
           setSettingsScrollOffset(0);
@@ -1607,10 +1597,10 @@ export function App(): React.ReactElement {
       } else if (currentView === "settings") {
         // Settings view
         // Index 0: Claude Connection
-        // Index 1-3: Archive filter options
-        // Index 4: Auto-archive toggle
-        // Index 5: Initialize Archive
-        // Index 6: Browse Archive
+        // Index 1: Auto-archive toggle
+        // Index 2: Extract Catalog
+        // Index 3: Re-extract All
+        // Index 4: Browse Archive
 
         // Handle token input mode
         if (isTokenInputMode) {
@@ -1725,12 +1715,12 @@ export function App(): React.ReactElement {
           return;
         }
 
-        // Settings has ~26 content lines, visible height is 10
+        // Settings has ~20 content lines, visible height is 10
         // Map settings index to approximate content row for scrolling
-        // Row positions: Claude ~4, Filters ~7-9, Auto-archive ~12, Archive Actions ~15-17
-        const SETTINGS_ROW_MAP = [4, 7, 8, 9, 12, 15, 16, 17];
+        // Row positions: Claude ~4, Auto-archive ~8, Extract ~11, Re-extract ~12, Browse ~13
+        const SETTINGS_ROW_MAP = [4, 8, 11, 12, 13];
         const VISIBLE_HEIGHT = 10;
-        const TOTAL_CONTENT_LINES = 26; // Approximate total content lines
+        const TOTAL_CONTENT_LINES = 20; // Approximate total content lines
 
         if (key.upArrow) {
           const newIndex = Math.max(0, settingsIndex - 1);
@@ -1775,23 +1765,17 @@ export function App(): React.ReactElement {
               setClaudeTokenInput("");
               setClaudeTokenError(null);
             }
-          } else if (settingsIndex >= 1 && settingsIndex <= 3) {
-            // Filter option selected (index 1-3 maps to filter option 0-2)
-            const filterIndex = settingsIndex - 1;
-            const newFilter = FILTER_OPTIONS[filterIndex].type;
-            setArchiveFilterState(newFilter);
-            setArchiveFilter(newFilter);
-          } else if (settingsIndex === 4) {
+          } else if (settingsIndex === 1) {
             // Auto-archive toggle
             const newValue = toggleAutoArchive();
             setAutoArchiveEnabled(newValue);
-          } else if (settingsIndex === 5) {
-            // Initialize Archive (skip already archived)
+          } else if (settingsIndex === 2) {
+            // Extract Catalog (skip already extracted)
             handleInitializeArchive({ force: false });
-          } else if (settingsIndex === 6) {
-            // Re-initialize All (force re-archive everything)
+          } else if (settingsIndex === 3) {
+            // Re-extract All (force re-extract everything)
             handleInitializeArchive({ force: true });
-          } else if (settingsIndex === 7) {
+          } else if (settingsIndex === 4) {
             // Browse Archive
             setCurrentView("archive-browser");
             loadArchiveBrowser();
@@ -2061,7 +2045,6 @@ export function App(): React.ReactElement {
         // Settings props
         settingsIndex={settingsIndex}
         settingsScrollOffset={settingsScrollOffset}
-        archiveFilter={archiveFilter}
         autoArchiveEnabled={autoArchiveEnabled}
         archiveStats={archiveStats}
         archiveStatsLoading={archiveStatsLoading}

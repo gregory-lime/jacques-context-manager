@@ -13,6 +13,7 @@ export type {
   ContextFile,
   SessionEntry,
   PlanEntry,
+  SubagentEntry,
   ContextSource,
   AddContextOptions,
   // Legacy
@@ -34,6 +35,9 @@ export {
   // Plan operations
   addPlanToIndex,
   removePlanFromIndex,
+  // Subagent operations
+  addSubagentToIndex,
+  removeSubagentFromIndex,
   // Utilities
   fileExistsInIndex,
   // Legacy compatibility

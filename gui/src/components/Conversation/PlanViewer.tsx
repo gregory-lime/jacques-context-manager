@@ -7,6 +7,8 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 interface PlanViewerProps {
   plan: PlanInfo;
   sessionId: string;
+  /** Full project path for catalog API calls */
+  projectPath?: string;
   onClose: () => void;
 }
 
@@ -22,7 +24,15 @@ interface PlanContent {
   content: string;
 }
 
-export function PlanViewer({ plan, sessionId, onClose }: PlanViewerProps) {
+/**
+ * Encode a project path to the dash-encoded format used by Claude Code.
+ * e.g., "/Users/gole/Desktop/project" → "-Users-gole-Desktop-project"
+ */
+function encodeProjectPath(projectPath: string): string {
+  return projectPath.replace(/\//g, '-');
+}
+
+export function PlanViewer({ plan, sessionId, projectPath, onClose }: PlanViewerProps) {
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,40 +43,33 @@ export function PlanViewer({ plan, sessionId, onClose }: PlanViewerProps) {
       setError(null);
 
       try {
-        if (plan.source === 'agent' && plan.agentId) {
-          // For agent plans, fetch from the subagent endpoint
+        // Prefer catalog endpoint when catalogId is available (works for ALL source types)
+        if (plan.catalogId && projectPath) {
+          const encodedPath = encodeURIComponent(encodeProjectPath(projectPath));
           const response = await fetch(
-            `${API_URL}/sessions/${sessionId}/subagents/${plan.agentId}`
+            `${API_URL}/projects/${encodedPath}/plans/${encodeURIComponent(plan.catalogId)}/content`
           );
 
-          if (!response.ok) {
-            setError(response.status === 404 ? 'Agent content not found' : `Failed to load agent plan: ${response.statusText}`);
+          if (response.ok) {
+            const data = await response.json();
+            setContent(data.content);
             return;
           }
-
-          const data = await response.json();
-          // Extract assistant text from the subagent entries
-          const assistantTexts: string[] = [];
-          for (const entry of data.entries || []) {
-            if (entry.type === 'assistant_message' && entry.content?.text) {
-              assistantTexts.push(entry.content.text);
-            }
-          }
-          setContent(assistantTexts.join('\n\n') || 'No plan content found in agent response.');
-        } else {
-          // For embedded/written plans, use the existing endpoint
-          const response = await fetch(
-            `${API_URL}/sessions/${sessionId}/plans/${plan.messageIndex}`
-          );
-
-          if (!response.ok) {
-            setError(response.status === 404 ? 'Plan content not found' : `Failed to load plan: ${response.statusText}`);
-            return;
-          }
-
-          const data: PlanContent = await response.json();
-          setContent(data.content);
+          // Fall through to per-source logic if catalog fetch fails
         }
+
+        // Fallback: use the messageIndex endpoint (handles all source types)
+        const response = await fetch(
+          `${API_URL}/sessions/${sessionId}/plans/${plan.messageIndex}`
+        );
+
+        if (!response.ok) {
+          setError(response.status === 404 ? 'Plan content not found' : `Failed to load plan: ${response.statusText}`);
+          return;
+        }
+
+        const data: PlanContent = await response.json();
+        setContent(data.content);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load plan');
       } finally {
@@ -75,7 +78,7 @@ export function PlanViewer({ plan, sessionId, onClose }: PlanViewerProps) {
     };
 
     fetchPlanContent();
-  }, [sessionId, plan.messageIndex, plan.source, plan.agentId]);
+  }, [sessionId, plan.messageIndex, plan.source, plan.agentId, plan.catalogId, projectPath]);
 
   // Handle keyboard escape
   useEffect(() => {
@@ -89,16 +92,21 @@ export function PlanViewer({ plan, sessionId, onClose }: PlanViewerProps) {
   }, [onClose]);
 
   const sourceLabels: Record<string, string> = {
-    embedded: 'Embedded Plan',
-    write: 'Written Plan',
-    agent: 'Agent-Generated Plan',
+    embedded: 'Embedded',
+    write: 'Written',
+    agent: 'Agent',
   };
   const sourceIcons: Record<string, JSX.Element> = {
     embedded: <FileText size={24} />,
     write: <PenTool size={24} />,
     agent: <Bot size={24} />,
   };
-  const sourceLabel = sourceLabels[plan.source] || 'Plan';
+
+  // Show combined sources if available
+  const allSources = plan.sources || [plan.source];
+  const sourceLabel = allSources.length > 1
+    ? allSources.map(s => sourceLabels[s] || s).join(' + ') + ' Plan'
+    : (sourceLabels[plan.source] || '') + ' Plan';
   const sourceIcon = sourceIcons[plan.source] || <FileText size={24} />;
 
   return (

@@ -13,6 +13,7 @@ import type {
   ContextFile,
   SessionEntry,
   PlanEntry,
+  SubagentEntry,
   ContextIndex,
 } from "./types.js";
 import { getDefaultIndex, migrateIndex } from "./types.js";
@@ -48,13 +49,14 @@ export async function readProjectIndex(cwd: string): Promise<ProjectIndex> {
       return migrateIndex(parsed as ContextIndex);
     }
 
-    // New format - validate and merge with defaults
+    // New format - validate and merge with defaults (v2 adds subagents)
     return {
-      version: parsed.version || "1.0.0",
+      version: parsed.version || "2.0.0",
       updatedAt: parsed.updatedAt || new Date().toISOString(),
       context: Array.isArray(parsed.context) ? parsed.context : [],
       sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
       plans: Array.isArray(parsed.plans) ? parsed.plans : [],
+      subagents: Array.isArray(parsed.subagents) ? parsed.subagents : [],
     };
   } catch {
     return getDefaultIndex();
@@ -203,6 +205,49 @@ export async function removePlanFromIndex(
 ): Promise<ProjectIndex> {
   const index = await readProjectIndex(cwd);
   index.plans = index.plans.filter((p) => p.id !== planId);
+  await writeProjectIndex(cwd, index);
+  return index;
+}
+
+// ============================================================
+// Subagent Operations
+// ============================================================
+
+/**
+ * Add a subagent entry to the index
+ */
+export async function addSubagentToIndex(
+  cwd: string,
+  entry: SubagentEntry
+): Promise<ProjectIndex> {
+  const index = await readProjectIndex(cwd);
+
+  const existingIdx = index.subagents.findIndex((s) => s.id === entry.id);
+  if (existingIdx >= 0) {
+    index.subagents[existingIdx] = entry;
+  } else {
+    index.subagents.push(entry);
+  }
+
+  // Sort subagents by timestamp (newest first)
+  index.subagents.sort(
+    (a, b) =>
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+
+  await writeProjectIndex(cwd, index);
+  return index;
+}
+
+/**
+ * Remove a subagent entry from the index
+ */
+export async function removeSubagentFromIndex(
+  cwd: string,
+  subagentId: string
+): Promise<ProjectIndex> {
+  const index = await readProjectIndex(cwd);
+  index.subagents = index.subagents.filter((s) => s.id !== subagentId);
   await writeProjectIndex(cwd, index);
   return index;
 }

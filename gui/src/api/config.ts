@@ -400,6 +400,105 @@ export function initializeArchive(
   };
 }
 
+// ============================================================
+// Catalog Extraction API
+// ============================================================
+
+export interface CatalogProgress {
+  phase: 'scanning' | 'extracting';
+  total: number;
+  completed: number;
+  current: string;
+  skipped: number;
+  errors: number;
+}
+
+export interface CatalogExtractResult {
+  totalSessions: number;
+  extracted: number;
+  skipped: number;
+  errors: number;
+}
+
+/**
+ * Extract catalog data from JSONL sessions
+ * Returns an SSE stream for progress updates
+ *
+ * @param options.force - If true, re-extracts all sessions
+ * @param options.project - If set, only extract for a specific project
+ */
+export function extractCatalog(
+  callbacks: {
+    onProgress?: (progress: CatalogProgress) => void;
+    onComplete?: (result: CatalogExtractResult) => void;
+    onError?: (error: string) => void;
+  },
+  options: { force?: boolean; project?: string } = {}
+): { abort: () => void } {
+  let aborted = false;
+
+  const url = new URL(`${API_URL}/catalog/extract`, window.location.origin);
+  if (options.force) {
+    url.searchParams.set('force', 'true');
+  }
+  if (options.project) {
+    url.searchParams.set('project', options.project);
+  }
+
+  fetch(url.toString(), {
+    method: 'POST',
+  }).then(async (response) => {
+    if (!response.ok) {
+      callbacks.onError?.(`Failed to extract catalog: ${response.statusText}`);
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      callbacks.onError?.('No response body');
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (!aborted) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      let currentEvent = '';
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7);
+        } else if (line.startsWith('data: ')) {
+          const data = JSON.parse(line.slice(6));
+          if (currentEvent === 'progress') {
+            callbacks.onProgress?.(data);
+          } else if (currentEvent === 'complete') {
+            callbacks.onComplete?.(data);
+          } else if (currentEvent === 'error') {
+            callbacks.onError?.(data.error);
+          }
+        }
+      }
+    }
+  }).catch((error) => {
+    if (!aborted) {
+      callbacks.onError?.(error.message);
+    }
+  });
+
+  return {
+    abort: () => {
+      aborted = true;
+    },
+  };
+}
+
 /**
  * Get a single subagent's full conversation by agent ID
  */

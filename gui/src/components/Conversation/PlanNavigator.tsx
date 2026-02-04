@@ -3,28 +3,49 @@ import { FileText, PenTool, Bot, ChevronDown, ChevronRight } from 'lucide-react'
 import type { ConversationMessage, ToolUseContent } from '../../types';
 import { colors } from '../../styles/theme';
 
+/** Backend plan reference (from catalog extraction) */
+interface BackendPlanRef {
+  title: string;
+  source: 'embedded' | 'write' | 'agent';
+  sources?: Array<'embedded' | 'write' | 'agent'>;
+  messageIndex: number;
+  filePath?: string;
+  agentId?: string;
+  catalogId?: string;
+}
+
 interface PlanNavigatorProps {
   messages: ConversationMessage[];
   currentIndex: number;
   onNavigate: (messageIndex: number, contentIndex?: number, contentId?: string) => void;
   onViewPlan?: (planInfo: PlanInfo) => void;
+  /** Pre-deduplicated plan refs from backend catalog. When provided, skips message re-detection. */
+  planRefs?: BackendPlanRef[];
 }
 
 export interface PlanInfo {
   title: string;
   source: 'embedded' | 'write' | 'agent';
+  /** All detection methods that found this plan (when deduplicated) */
+  sources?: Array<'embedded' | 'write' | 'agent'>;
   messageIndex: number;
   filePath?: string;
   agentId?: string;
+  /** Links to catalog plan ID for content loading */
+  catalogId?: string;
 }
 
 interface DetectedPlan {
   title: string;
   source: 'embedded' | 'write' | 'agent';
+  /** All detection methods that found this plan (populated during dedup) */
+  mergedSources?: Array<'embedded' | 'write' | 'agent'>;
   messageIndex: number;
   contentIndex?: number;
   filePath?: string;
   agentId?: string;
+  /** Links to catalog plan ID for content loading */
+  catalogId?: string;
   preview: string;
 }
 
@@ -127,16 +148,10 @@ function extractPlanTitle(content: string): string {
   return firstLine.substring(0, 47) + '...';
 }
 
-export function PlanNavigator({
-  messages,
-  currentIndex,
-  onNavigate,
-  onViewPlan,
-}: PlanNavigatorProps) {
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
-
-  // Extract all plans from messages
+/**
+ * Detect plans from message content (fallback for uncataloged sessions).
+ */
+function detectPlansFromMessages(messages: ConversationMessage[]): DetectedPlan[] {
   const plans: DetectedPlan[] = [];
 
   messages.forEach((msg, msgIndex) => {
@@ -235,31 +250,90 @@ export function PlanNavigator({
   });
 
   if (plans.length === 0) {
+    return [];
+  }
+
+  // --- Deduplicate plans by title similarity ---
+  const normalizeTitle = (title: string) =>
+    title.toLowerCase().replace(/^plan:\s*/i, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
+  const deduplicatedPlans: DetectedPlan[] = [];
+  const titleMap = new Map<string, number>();
+
+  for (const plan of plans) {
+    const normalizedTitle = normalizeTitle(plan.title);
+    const existingIdx = titleMap.get(normalizedTitle);
+
+    if (existingIdx !== undefined) {
+      const existing = deduplicatedPlans[existingIdx];
+      if (!existing.mergedSources) {
+        existing.mergedSources = [existing.source];
+      }
+      if (!existing.mergedSources.includes(plan.source)) {
+        existing.mergedSources.push(plan.source);
+      }
+      if (!existing.filePath && plan.filePath) {
+        existing.filePath = plan.filePath;
+      }
+      if (!existing.agentId && plan.agentId) {
+        existing.agentId = plan.agentId;
+      }
+    } else {
+      titleMap.set(normalizedTitle, deduplicatedPlans.length);
+      deduplicatedPlans.push({
+        ...plan,
+        mergedSources: [plan.source],
+      });
+    }
+  }
+
+  return deduplicatedPlans;
+}
+
+/**
+ * Convert backend planRefs to DetectedPlan[] (no message re-detection needed).
+ */
+function convertBackendPlanRefs(planRefs: BackendPlanRef[]): DetectedPlan[] {
+  return planRefs.map(ref => ({
+    title: ref.title,
+    source: ref.source,
+    mergedSources: ref.sources || [ref.source],
+    messageIndex: ref.messageIndex,
+    filePath: ref.filePath,
+    agentId: ref.agentId,
+    catalogId: ref.catalogId,
+    preview: ref.title,
+  }));
+}
+
+export function PlanNavigator({
+  messages,
+  currentIndex,
+  onNavigate,
+  onViewPlan,
+  planRefs,
+}: PlanNavigatorProps) {
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+
+  // Use backend planRefs when available (already deduplicated with catalogIds),
+  // fall back to message-based detection for uncataloged sessions
+  const displayPlans = planRefs && planRefs.length > 0
+    ? convertBackendPlanRefs(planRefs)
+    : detectPlansFromMessages(messages);
+
+  if (displayPlans.length === 0) {
     return null;
   }
 
-  // Group by source type
-  const bySource = new Map<'embedded' | 'write' | 'agent', DetectedPlan[]>();
-  for (const plan of plans) {
-    const list = bySource.get(plan.source) || [];
-    list.push(plan);
-    bySource.set(plan.source, list);
-  }
-
-  // Sort sources: Embedded first, then Agent, then Written
-  const sourceOrder: Array<'embedded' | 'agent' | 'write'> = ['embedded', 'agent', 'write'];
-  const sortedSources = Array.from(bySource.keys()).sort((a, b) => {
-    return sourceOrder.indexOf(a) - sourceOrder.indexOf(b);
-  });
-
   // Find which plan is currently active (closest to current scroll position)
   const findActivePlan = () => {
-    for (let i = plans.length - 1; i >= 0; i--) {
-      if (plans[i].messageIndex <= currentIndex) {
-        return plans[i];
+    for (let i = displayPlans.length - 1; i >= 0; i--) {
+      if (displayPlans[i].messageIndex <= currentIndex) {
+        return displayPlans[i];
       }
     }
-    return plans[0];
+    return displayPlans[0];
   };
 
   const activePlan = findActivePlan();
@@ -268,72 +342,71 @@ export function PlanNavigator({
     <div style={styles.container}>
       <div style={{ ...styles.header, cursor: 'pointer' }} onClick={() => setCollapsed(!collapsed)}>
         <span style={styles.headerIcon}><FileText size={14} /></span>
-        <span style={{ flex: 1 }}>Plans ({plans.length})</span>
+        <span style={{ flex: 1 }}>Plans ({displayPlans.length})</span>
         <span style={{ display: 'inline-flex', alignItems: 'center', color: colors.textMuted }}>
           {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
         </span>
       </div>
       {!collapsed && <div style={styles.list}>
-        {sortedSources.map((source) => {
-          const sourcePlans = bySource.get(source) || [];
-          const sourceStyle = getPlanSourceStyle(source);
+        {displayPlans.map((plan, idx) => {
+          const isActive = plan === activePlan;
+          const planKey = `plan-${plan.messageIndex}-${idx}`;
+          const isHovered = hoveredKey === planKey;
+          const allSources = plan.mergedSources || [plan.source];
 
           return (
-            <div key={source} style={styles.sourceGroup}>
-              <div style={styles.sourceHeader}>
-                <span style={{ color: sourceStyle.color, display: 'inline-flex', alignItems: 'center' }}>
-                  {sourceStyle.icon}
-                </span>
-                <span style={{ color: sourceStyle.color, fontWeight: 500 }}>
-                  {sourceStyle.label}
-                </span>
-                <span style={styles.sourceCount}>({sourcePlans.length})</span>
-              </div>
-              {sourcePlans.map((plan, idx) => {
-                const isActive = plan === activePlan;
-                const planKey = `${plan.source}-${plan.messageIndex}-${idx}`;
-                const isHovered = hoveredKey === planKey;
-
-                return (
-                  <div key={planKey} style={styles.planItem}>
-                    <button
-                      style={{
-                        ...styles.navButton,
-                        ...(isActive ? styles.navButtonActive : {}),
-                        ...(isHovered && !isActive ? styles.navButtonHovered : {}),
-                      }}
-                      onClick={() => onNavigate(plan.messageIndex, plan.contentIndex)}
-                      onMouseEnter={() => setHoveredKey(planKey)}
-                      onMouseLeave={() => setHoveredKey(null)}
-                      title={plan.preview}
-                      type="button"
-                    >
-                      <span style={{
-                        ...styles.marker,
-                        backgroundColor: isActive ? colors.accent : 'transparent',
-                        border: isActive ? 'none' : `1px solid ${colors.borderSubtle}`,
-                      }} />
-                      <span style={styles.planTitle}>{plan.title}</span>
-                    </button>
-                    {onViewPlan && (
-                      <button
-                        style={styles.viewButton}
-                        onClick={() => onViewPlan({
-                          title: plan.title,
-                          source: plan.source,
-                          messageIndex: plan.messageIndex,
-                          filePath: plan.filePath,
-                          agentId: plan.agentId,
-                        })}
-                        title="View full plan"
-                        type="button"
+            <div key={planKey} style={styles.planItem}>
+              <button
+                style={{
+                  ...styles.navButton,
+                  ...(isActive ? styles.navButtonActive : {}),
+                  ...(isHovered && !isActive ? styles.navButtonHovered : {}),
+                }}
+                onClick={() => onNavigate(plan.messageIndex, plan.contentIndex)}
+                onMouseEnter={() => setHoveredKey(planKey)}
+                onMouseLeave={() => setHoveredKey(null)}
+                title={plan.preview}
+                type="button"
+              >
+                <span style={{
+                  ...styles.marker,
+                  backgroundColor: isActive ? colors.accent : 'transparent',
+                  border: isActive ? 'none' : `1px solid ${colors.borderSubtle}`,
+                }} />
+                <span style={styles.planTitle}>{plan.title}</span>
+                <span style={styles.sourceBadges}>
+                  {allSources.map((src) => {
+                    const srcStyle = getPlanSourceStyle(src);
+                    return (
+                      <span
+                        key={src}
+                        style={{ ...styles.sourceBadge, color: srcStyle.color, borderColor: srcStyle.color }}
+                        title={srcStyle.label}
                       >
-                        View
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
+                        {srcStyle.icon}
+                      </span>
+                    );
+                  })}
+                </span>
+              </button>
+              {onViewPlan && (
+                <button
+                  style={styles.viewButton}
+                  onClick={() => onViewPlan({
+                    title: plan.title,
+                    source: plan.source,
+                    sources: allSources,
+                    messageIndex: plan.messageIndex,
+                    filePath: plan.filePath,
+                    agentId: plan.agentId,
+                    catalogId: plan.catalogId,
+                  })}
+                  title="View full plan"
+                  type="button"
+                >
+                  View
+                </button>
+              )}
             </div>
           );
         })}
@@ -368,21 +441,6 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     overflow: 'auto',
     padding: '8px',
-  },
-  sourceGroup: {
-    marginBottom: '12px',
-  },
-  sourceHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    padding: '4px 8px',
-    fontSize: '11px',
-    textTransform: 'uppercase' as const,
-  },
-  sourceCount: {
-    color: colors.textMuted,
-    marginLeft: 'auto',
   },
   planItem: {
     display: 'flex',
@@ -423,6 +481,23 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap' as const,
+  },
+  sourceBadges: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '3px',
+    marginLeft: 'auto',
+    flexShrink: 0,
+  },
+  sourceBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '16px',
+    height: '16px',
+    borderRadius: '3px',
+    border: '1px solid',
+    opacity: 0.7,
   },
   viewButton: {
     padding: '4px 8px',

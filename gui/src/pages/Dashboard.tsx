@@ -573,21 +573,19 @@ export function Dashboard() {
         </section>
 
         {/* ── Session History ── */}
-        <section className="jacques-animate-in" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ flexShrink: 0 }}>
-            <SectionHeader title="SESSION HISTORY" accentColor={PALETTE.coral} />
-          </div>
+        <section className="jacques-animate-in" style={{ flexShrink: 0 }}>
+          <SectionHeader title="SESSION HISTORY" accentColor={PALETTE.coral} />
 
           {loading ? (
-            <div style={{ ...styles.historyList, flex: 1, overflowY: 'auto', minHeight: 0 }}>
+            <div style={styles.historyList}>
               {Array.from({ length: 8 }, (_, i) => (
                 <SkeletonHistoryRow key={i} />
               ))}
             </div>
           ) : sessionList.length === 0 ? (
-            <div style={{ ...styles.emptyText, flex: 1 }}>No sessions yet</div>
+            <div style={styles.emptyText}>No sessions yet</div>
           ) : (
-            <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0 }}>
+            <div className="jacques-dashboard" style={styles.scrollableHistoryList}>
               <div style={styles.historyList}>
                 {sessionList.map((session, index) => {
                   const isLive = session.source === 'live';
@@ -1016,6 +1014,13 @@ const styles: Record<string, React.CSSProperties> = {
   // Scrollable list container — fits ~6 rows, scrolls the rest
   scrollableList: {
     maxHeight: '252px',
+    overflowY: 'auto',
+    overflowX: 'hidden',
+  },
+
+  // Session history scrollable list — taller than plans/subagents, fits ~10 rows
+  scrollableHistoryList: {
+    maxHeight: '420px',
     overflowY: 'auto',
     overflowX: 'hidden',
   },

@@ -563,6 +563,7 @@ export function ConversationViewer({ conversation, onBack }: ConversationViewerP
             currentIndex={currentMessageIndex}
             onNavigate={navigateToMessage}
             onViewPlan={(plan) => setViewingPlan(plan)}
+            planRefs={conversation.metadata.planRefs}
           />
           <SubagentNavigator
             messages={filteredMessages}
@@ -577,6 +578,7 @@ export function ConversationViewer({ conversation, onBack }: ConversationViewerP
         <PlanViewer
           plan={viewingPlan}
           sessionId={conversation.sessionId}
+          projectPath={conversation.projectPath}
           onClose={() => setViewingPlan(null)}
         />
       )}

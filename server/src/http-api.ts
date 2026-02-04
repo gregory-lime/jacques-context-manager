@@ -51,6 +51,8 @@ import {
   getProjectPlans,
   readLocalPlanContent,
   readProjectIndex,
+  extractAllCatalogs,
+  extractProjectCatalog,
 } from '@jacques/core';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -636,6 +638,20 @@ export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpA
           );
         }
 
+        // Overlay deduplicated planRefs from catalog manifest if available.
+        // The session index cache has raw plan detections; the catalog manifest
+        // has them grouped and deduplicated with catalogId for content loading.
+        try {
+          const catalogManifestPath = join(sessionEntry.projectPath, '.jacques', 'sessions', `${id}.json`);
+          const catalogContent = await fsPromises.readFile(catalogManifestPath, 'utf-8');
+          const catalogManifest = JSON.parse(catalogContent);
+          if (catalogManifest.planRefs) {
+            sessionEntry = { ...sessionEntry, planRefs: catalogManifest.planRefs };
+          }
+        } catch {
+          // No catalog manifest available, use session index planRefs as-is
+        }
+
         sendJson(res, 200, {
           metadata: sessionEntry,
           entries,
@@ -957,6 +973,18 @@ export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpA
           return;
         }
 
+        // Overlay deduplicated planRefs from catalog manifest if available
+        try {
+          const catalogManifestPath = join(sessionEntry.projectPath, '.jacques', 'sessions', `${sessionId}.json`);
+          const catalogContent = await fsPromises.readFile(catalogManifestPath, 'utf-8');
+          const catalogManifest = JSON.parse(catalogContent);
+          if (catalogManifest.planRefs) {
+            sessionEntry = { ...sessionEntry, planRefs: catalogManifest.planRefs };
+          }
+        } catch {
+          // No catalog manifest, use session index planRefs as-is
+        }
+
         // Check if session has plan refs
         if (!sessionEntry.planRefs || sessionEntry.planRefs.length === 0) {
           sendJson(res, 404, { error: 'No plans found in session' });
@@ -1000,14 +1028,44 @@ export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpA
             content: planContent,
           });
         } else if (planRef.source === 'agent') {
-          // For agent plans, the content is served via the subagent endpoint
-          // Return metadata pointing to the subagent
+          // For agent plans, read the subagent JSONL and extract the last assistant response
+          const agentId = (planRef as { agentId?: string }).agentId;
+          if (!agentId) {
+            sendJson(res, 404, { error: 'Agent ID not found for plan' });
+            return;
+          }
+
+          const subagentFiles = await listSubagentFiles(sessionEntry.jsonlPath);
+          const subagentFile = subagentFiles.find(f => f.agentId === agentId);
+          if (!subagentFile) {
+            sendJson(res, 404, { error: 'Agent subagent file not found' });
+            return;
+          }
+
+          const subEntries = await parseJSONL(subagentFile.filePath);
+          // Find last substantial assistant text (the plan output)
+          let planContent = '';
+          for (let i = subEntries.length - 1; i >= 0; i--) {
+            if (subEntries[i].type === 'assistant_message' && subEntries[i].content.text && subEntries[i].content.text!.length >= 100) {
+              planContent = subEntries[i].content.text!;
+              break;
+            }
+          }
+
+          if (!planContent) {
+            // Fallback: concatenate all assistant texts
+            planContent = subEntries
+              .filter(e => e.type === 'assistant_message' && e.content.text)
+              .map(e => e.content.text!)
+              .join('\n\n') || 'No plan content found in agent response.';
+          }
+
           sendJson(res, 200, {
             title: planRef.title,
             source: planRef.source,
             messageIndex: planRef.messageIndex,
-            agentId: (planRef as { agentId?: string }).agentId,
-            content: 'Use /api/sessions/:id/subagents/:agentId to get agent plan content.',
+            agentId,
+            content: planContent,
           });
         } else {
           // For written plans, read from file
@@ -1334,6 +1392,112 @@ export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpA
       } catch (error) {
         sendSSE('error', { error: error instanceof Error ? error.message : 'Unknown error' });
         res.end();
+      }
+      return;
+    }
+
+    // === Catalog API Routes ===
+
+    // Route: POST /api/catalog/extract
+    // Triggers bulk catalog extraction with SSE progress
+    // Query params:
+    //   - force=true: Re-extract all sessions
+    //   - project=<path>: Extract only for a specific project
+    if (method === 'POST' && url.startsWith('/api/catalog/extract')) {
+      const urlObj = new URL(url, `http://${req.headers.host}`);
+      const force = urlObj.searchParams.get('force') === 'true';
+      const projectParam = urlObj.searchParams.get('project');
+
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+      });
+
+      const sendSSE = (event: string, data: unknown) => {
+        res.write(`event: ${event}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      };
+
+      try {
+        if (projectParam) {
+          const result = await extractProjectCatalog(projectParam, {
+            force,
+            onProgress: (progress) => {
+              sendSSE('progress', progress);
+            },
+          });
+          sendSSE('complete', result);
+        } else {
+          const result = await extractAllCatalogs({
+            force,
+            onProgress: (progress) => {
+              sendSSE('progress', progress);
+            },
+          });
+          sendSSE('complete', result);
+        }
+        res.end();
+      } catch (error) {
+        sendSSE('error', { error: error instanceof Error ? error.message : 'Unknown error' });
+        res.end();
+      }
+      return;
+    }
+
+    // Route: GET /api/projects/:encodedPath/catalog
+    // Returns ProjectIndex from .jacques/index.json (instant)
+    if (method === 'GET' && url.match(/^\/api\/projects\/[^/]+\/catalog$/)) {
+      const match = url.match(/^\/api\/projects\/([^/]+)\/catalog$/);
+      const encodedPath = match?.[1];
+
+      if (!encodedPath) {
+        sendJson(res, 400, { error: 'Invalid project path' });
+        return;
+      }
+
+      try {
+        const projectPath = await decodeProjectPath(decodeURIComponent(encodedPath));
+        const index = await readProjectIndex(projectPath);
+        sendJson(res, 200, { projectPath, index });
+      } catch (error) {
+        sendJson(res, 500, { error: 'Failed to get project catalog' });
+      }
+      return;
+    }
+
+    // Route: GET /api/projects/:encodedPath/subagents/:id/content
+    // Returns subagent markdown content
+    if (method === 'GET' && url.match(/^\/api\/projects\/[^/]+\/subagents\/[^/]+\/content$/)) {
+      const match = url.match(/^\/api\/projects\/([^/]+)\/subagents\/([^/]+)\/content$/);
+      const encodedPath = match?.[1];
+      const subagentId = match?.[2];
+
+      if (!encodedPath || !subagentId) {
+        sendJson(res, 400, { error: 'Invalid project path or subagent ID' });
+        return;
+      }
+
+      try {
+        const projectPath = await decodeProjectPath(decodeURIComponent(encodedPath));
+        const index = await readProjectIndex(projectPath);
+        const entry = index.subagents.find(s => s.id === subagentId);
+
+        if (!entry) {
+          sendJson(res, 404, { error: 'Subagent not found in catalog' });
+          return;
+        }
+
+        const filePath = join(projectPath, '.jacques', entry.path);
+        const content = await fsPromises.readFile(filePath, 'utf-8');
+
+        sendJson(res, 200, {
+          ...entry,
+          content,
+        });
+      } catch (error) {
+        sendJson(res, 500, { error: 'Failed to get subagent content' });
       }
       return;
     }

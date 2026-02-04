@@ -191,8 +191,6 @@ export interface SearchOutput {
  * Archive settings stored in ~/.jacques/config.json
  */
 export interface ArchiveSettings {
-  /** Filter type for saving: "everything" | "without_tools" | "messages_only" */
-  filter: "everything" | "without_tools" | "messages_only";
   /** Auto-archive on session end (default false) */
   autoArchive: boolean;
 }
@@ -202,7 +200,6 @@ export interface ArchiveSettings {
  */
 export function getDefaultArchiveSettings(): ArchiveSettings {
   return {
-    filter: "without_tools",
     autoArchive: false,
   };
 }

@@ -289,6 +289,8 @@ export interface SavedConversation {
   sessionId?: string;
   title: string;
   project: string;
+  /** Full project path (for catalog API calls) */
+  projectPath?: string;
   date: string;
   messages: ConversationMessage[];
   metadata: {
@@ -308,6 +310,16 @@ export interface SavedConversation {
     hadAutoCompact?: boolean;
     /** Timestamp when auto-compact occurred (ISO string) */
     autoCompactAt?: string;
+    /** Plan references from backend catalog (deduplicated) */
+    planRefs?: Array<{
+      title: string;
+      source: 'embedded' | 'write' | 'agent';
+      sources?: Array<'embedded' | 'write' | 'agent'>;
+      messageIndex: number;
+      filePath?: string;
+      agentId?: string;
+      catalogId?: string;
+    }>;
   };
 }
 

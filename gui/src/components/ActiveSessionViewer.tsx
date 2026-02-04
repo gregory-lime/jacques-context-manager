@@ -227,6 +227,7 @@ function transformToSavedConversation(data: SessionData): SavedConversation {
     sessionId: data.metadata.id,
     title: data.metadata.title,
     project: data.metadata.projectSlug,
+    projectPath: data.metadata.projectPath,
     date: data.metadata.endedAt.split('T')[0],
     messages,
     metadata: {
@@ -247,6 +248,7 @@ function transformToSavedConversation(data: SessionData): SavedConversation {
           }
         : undefined,
       hadAutoCompact: data.metadata.hadAutoCompact,
+      planRefs: data.metadata.planRefs,
     },
   };
 }

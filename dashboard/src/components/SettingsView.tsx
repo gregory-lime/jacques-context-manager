@@ -1,16 +1,16 @@
 /**
  * Settings View Component
  *
- * Displays and allows configuration of archive settings:
- * - Archive filter (Everything, Without Tools, Messages Only)
+ * Displays and allows configuration of settings:
+ * - Claude Code connection
  * - Auto-archive toggle
- * - Archive statistics
+ * - Catalog extraction
+ * - Archive browsing
  */
 
 import React from "react";
 import { Box, Text } from "ink";
 import { MASCOT_ANSI } from "../assets/mascot-ansi.js";
-import type { ArchiveFilterType } from "@jacques/core";
 
 // Color constants (matching Dashboard.tsx)
 const BORDER_COLOR = "#E67E52";
@@ -22,9 +22,6 @@ const CONTENT_PADDING = 2;
 const HORIZONTAL_LAYOUT_MIN_WIDTH = 62;
 const FIXED_CONTENT_HEIGHT = 10;
 
-// Re-export for consumers
-export type { ArchiveFilterType };
-
 export interface ArchiveStatsData {
   totalConversations: number;
   totalProjects: number;
@@ -35,7 +32,6 @@ export interface ArchiveStatsData {
 interface SettingsViewProps {
   terminalWidth: number;
   selectedIndex: number;
-  filterType: ArchiveFilterType;
   autoArchive: boolean;
   stats: ArchiveStatsData | null;
   loading?: boolean;
@@ -50,44 +46,19 @@ interface SettingsViewProps {
   showConnectionSuccess?: boolean;
 }
 
-// Filter options
-export const FILTER_OPTIONS: Array<{
-  type: ArchiveFilterType;
-  label: string;
-  description: string;
-}> = [
-  {
-    type: "everything",
-    label: "Everything",
-    description: "Full context with all data",
-  },
-  {
-    type: "without_tools",
-    label: "Without Tools",
-    description: "Remove tool calls/results",
-  },
-  {
-    type: "messages_only",
-    label: "Messages Only",
-    description: "Just conversation text",
-  },
-];
-
 // Settings items:
 // Index 0: Claude Connection (input/status)
-// Index 1-3: filter options
-// Index 4: auto-archive toggle
-// Index 5: Initialize Archive button
-// Index 6: Re-initialize All button
-// Index 7: Browse Archive button
-const TOTAL_ITEMS = 8;
+// Index 1: Auto-archive toggle
+// Index 2: Extract Catalog button
+// Index 3: Re-extract All button
+// Index 4: Browse Archive button
+const TOTAL_ITEMS = 5;
 
 export { TOTAL_ITEMS as SETTINGS_TOTAL_ITEMS };
 
 export function SettingsView({
   terminalWidth,
   selectedIndex,
-  filterType,
   autoArchive,
   stats,
   loading = false,
@@ -176,31 +147,11 @@ export function SettingsView({
     );
   }
 
-  // Archive Filter section
-  contentLines.push(<Box />);
-  contentLines.push(<Text color={MUTED_TEXT}>Archive Filter:</Text>);
-
-  // Filter options (indices 1-3)
-  FILTER_OPTIONS.forEach((option, index) => {
-    const itemIndex = index + 1; // Offset by 1 for Claude Connection
-    const isSelected = selectedIndex === itemIndex;
-    const isActive = filterType === option.type;
-    const radioIcon = isActive ? "●" : "○";
-
-    contentLines.push(
-      <Text key={option.type} color={isSelected ? ACCENT_COLOR : "white"}>
-        {isSelected ? "> " : "  "}
-        {radioIcon} {option.label}
-        <Text color={MUTED_TEXT}> ({option.description})</Text>
-      </Text>
-    );
-  });
-
-  // Auto-archive toggle (index 4)
+  // Auto-archive toggle (index 1)
   contentLines.push(<Box />);
   contentLines.push(<Text color={MUTED_TEXT}>Auto-Archive:</Text>);
 
-  const autoArchiveSelected = selectedIndex === 4;
+  const autoArchiveSelected = selectedIndex === 1;
   const checkIcon = autoArchive ? "[x]" : "[ ]";
   contentLines.push(
     <Text color={autoArchiveSelected ? ACCENT_COLOR : "white"}>
@@ -209,29 +160,29 @@ export function SettingsView({
     </Text>
   );
 
-  // Archive Actions section (indices 5-6)
+  // Catalog Actions section (indices 2-4)
   contentLines.push(<Box />);
-  contentLines.push(<Text color={MUTED_TEXT}>Archive Actions:</Text>);
+  contentLines.push(<Text color={MUTED_TEXT}>Catalog Actions:</Text>);
 
-  const initializeSelected = selectedIndex === 5;
+  const extractSelected = selectedIndex === 2;
   contentLines.push(
-    <Text color={initializeSelected ? ACCENT_COLOR : "white"}>
-      {initializeSelected ? "> " : "  "}
-      Initialize Archive
-      <Text color={MUTED_TEXT}> (scan new sessions)</Text>
+    <Text color={extractSelected ? ACCENT_COLOR : "white"}>
+      {extractSelected ? "> " : "  "}
+      Extract Catalog
+      <Text color={MUTED_TEXT}> (extract sessions, plans, subagents)</Text>
     </Text>
   );
 
-  const reinitializeSelected = selectedIndex === 6;
+  const reextractSelected = selectedIndex === 3;
   contentLines.push(
-    <Text color={reinitializeSelected ? ACCENT_COLOR : "white"}>
-      {reinitializeSelected ? "> " : "  "}
-      Re-initialize All
-      <Text color={MUTED_TEXT}> (re-archive everything)</Text>
+    <Text color={reextractSelected ? ACCENT_COLOR : "white"}>
+      {reextractSelected ? "> " : "  "}
+      Re-extract All
+      <Text color={MUTED_TEXT}> (force re-extract everything)</Text>
     </Text>
   );
 
-  const browseSelected = selectedIndex === 7;
+  const browseSelected = selectedIndex === 4;
   contentLines.push(
     <Text color={browseSelected ? ACCENT_COLOR : "white"}>
       {browseSelected ? "> " : "  "}

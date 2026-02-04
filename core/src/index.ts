@@ -210,6 +210,8 @@ export {
   removeSessionFromIndex,
   addPlanToIndex,
   removePlanFromIndex,
+  addSubagentToIndex,
+  removeSubagentFromIndex,
   fileExistsInIndex,
   readContextIndex,
   writeContextIndex,
@@ -239,6 +241,7 @@ export type {
   ContextFile,
   SessionEntry,
   PlanEntry,
+  SubagentEntry,
   ContextSource,
   AddContextOptions,
   ContextIndex,
@@ -337,8 +340,6 @@ export {
   setJacquesConfig,
   getArchiveSettings,
   setArchiveSettings,
-  getArchiveFilter,
-  setArchiveFilter,
   getAutoArchiveEnabled,
   setAutoArchiveEnabled,
   toggleAutoArchive,
@@ -361,7 +362,6 @@ export {
 
 export type {
   ClaudeSettings,
-  ArchiveFilterType,
   ArchiveSettings as UtilsArchiveSettings,
   JacquesConfig as UtilsJacquesConfig,
 } from "./utils/index.js";
@@ -449,3 +449,22 @@ export {
 } from "./project/index.js";
 
 export type { ProjectStatistics, ProjectSessionItem } from "./project/index.js";
+
+// Catalog module (pre-extraction for fast dashboard loading)
+export {
+  extractSessionCatalog,
+  extractExploreResult,
+  extractSearchResults,
+  createSessionManifest,
+  extractProjectCatalog,
+  extractAllCatalogs,
+} from "./catalog/index.js";
+
+export type {
+  SessionManifest,
+  ExtractSessionOptions,
+  ExtractSessionResult,
+  BulkExtractOptions,
+  BulkExtractResult,
+  CatalogProgress,
+} from "./catalog/index.js";

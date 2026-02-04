@@ -13,7 +13,7 @@ import { Box, Text, useStdout } from "ink";
 import { MASCOT_ANSI } from "../assets/mascot-ansi.js";
 import type { VerticalMenuItem } from "./VerticalMenu.js";
 import { ProgressBar } from "./ProgressBar.js";
-import type { Session, ObsidianVault, ObsidianFile, FlatTreeItem, ArchiveFilterType, HandoffEntry, ArchiveProgress, ArchiveInitResult, ConversationManifest, ProjectStatistics, ProjectSessionItem, PlanEntry } from "@jacques/core";
+import type { Session, ObsidianVault, ObsidianFile, FlatTreeItem, HandoffEntry, ArchiveProgress, ArchiveInitResult, ConversationManifest, ProjectStatistics, ProjectSessionItem, PlanEntry } from "@jacques/core";
 import { LoadContextView } from "./LoadContextView.js";
 import { SourceSelectionView } from "./SourceSelectionView.js";
 import type { SourceItem } from "./SourceSelectionView.js";
@@ -94,7 +94,6 @@ interface DashboardProps {
   // Settings props
   settingsIndex?: number;
   settingsScrollOffset?: number;
-  archiveFilter?: ArchiveFilterType;
   autoArchiveEnabled?: boolean;
   archiveStats?: ArchiveStatsData | null;
   archiveStatsLoading?: boolean;
@@ -554,7 +553,6 @@ export function Dashboard({
   // Settings props
   settingsIndex = 0,
   settingsScrollOffset = 0,
-  archiveFilter = "without_tools",
   autoArchiveEnabled = false,
   archiveStats = null,
   archiveStatsLoading = false,
@@ -814,7 +812,6 @@ export function Dashboard({
         <SettingsView
           terminalWidth={terminalWidth}
           selectedIndex={settingsIndex}
-          filterType={archiveFilter}
           autoArchive={autoArchiveEnabled}
           stats={archiveStats}
           loading={archiveStatsLoading}

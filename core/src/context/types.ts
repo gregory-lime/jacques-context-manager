@@ -17,6 +17,7 @@ export interface ProjectIndex {
   context: ContextFile[];
   sessions: SessionEntry[];
   plans: PlanEntry[];
+  subagents: SubagentEntry[];
 }
 
 /**
@@ -50,6 +51,57 @@ export interface SessionEntry {
   toolCallCount: number;
   technologies: string[];
   userLabel?: string;
+  /** Files modified via Write/Edit tool calls */
+  filesModified?: string[];
+  /** Unique tool names used */
+  toolsUsed?: string[];
+  /** Token usage stats */
+  tokens?: {
+    input: number;
+    output: number;
+    cacheCreation: number;
+    cacheRead: number;
+  };
+  /** Whether session has user-visible subagents */
+  hasSubagents?: boolean;
+  /** Whether auto-compact occurred */
+  hadAutoCompact?: boolean;
+  /** Session mode: planning or execution */
+  mode?: "planning" | "execution" | null;
+  /** Number of plans in this session */
+  planCount?: number;
+  /** Number of subagent artifacts */
+  subagentCount?: number;
+  /** Linked plan IDs (references PlanEntry.id) */
+  planIds?: string[];
+  /** Linked subagent IDs (references SubagentEntry.id) */
+  subagentIds?: string[];
+}
+
+/**
+ * A single subagent entry (exploration or search result)
+ */
+export interface SubagentEntry {
+  /** Unique ID: agentId for explorations, generated hash for searches */
+  id: string;
+  /** Parent session ID */
+  sessionId: string;
+  /** Type: exploration (Explore agent) or search (web search) */
+  type: "exploration" | "search";
+  /** Description (exploration) or query (search) */
+  title: string;
+  /** Output filename */
+  filename: string;
+  /** Relative path: "subagents/{filename}" */
+  path: string;
+  /** When the subagent ran or search was performed */
+  timestamp: string;
+  /** Estimated token cost (for explorations) */
+  tokenCost?: number;
+  /** Number of results (for searches) */
+  resultCount?: number;
+  /** When this was extracted */
+  extractedAt: string;
 }
 
 /**
@@ -87,11 +139,12 @@ export interface AddContextOptions {
  */
 export function getDefaultIndex(): ProjectIndex {
   return {
-    version: "1.0.0",
+    version: "2.0.0",
     updatedAt: new Date().toISOString(),
     context: [],
     sessions: [],
     plans: [],
+    subagents: [],
   };
 }
 
@@ -110,10 +163,11 @@ export interface ContextIndex {
  */
 export function migrateIndex(legacy: ContextIndex): ProjectIndex {
   return {
-    version: "1.0.0",
+    version: "2.0.0",
     updatedAt: legacy.updatedAt,
     context: legacy.files,
     sessions: [],
     plans: [],
+    subagents: [],
   };
 }

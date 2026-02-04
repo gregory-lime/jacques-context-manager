@@ -108,10 +108,7 @@ export function getAutoCompactThreshold(): number {
 // Jacques Archive Settings
 // ============================================================
 
-export type ArchiveFilterType = "everything" | "without_tools" | "messages_only";
-
 export interface ArchiveSettings {
-  filter: ArchiveFilterType;
   autoArchive: boolean;
 }
 
@@ -131,7 +128,6 @@ export interface JacquesConfig {
  */
 export function getDefaultArchiveSettings(): ArchiveSettings {
   return {
-    filter: "without_tools",
     autoArchive: false,
   };
 }
@@ -185,22 +181,6 @@ export function setArchiveSettings(settings: ArchiveSettings): boolean {
   const config = getJacquesConfig();
   config.archive = settings;
   return setJacquesConfig(config);
-}
-
-/**
- * Get archive filter type
- */
-export function getArchiveFilter(): ArchiveFilterType {
-  return getArchiveSettings().filter;
-}
-
-/**
- * Set archive filter type
- */
-export function setArchiveFilter(filter: ArchiveFilterType): boolean {
-  const settings = getArchiveSettings();
-  settings.filter = filter;
-  return setArchiveSettings(settings);
 }
 
 /**
