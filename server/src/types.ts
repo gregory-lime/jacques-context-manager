@@ -143,6 +143,8 @@ export interface Session {
   git_branch?: string | null;
   /** Git worktree name (if session is in a worktree) */
   git_worktree?: string | null;
+  /** Canonical git repo root path (main worktree root, shared across all worktrees) */
+  git_repo_root?: string | null;
 }
 
 // ============================================================
@@ -180,6 +182,8 @@ export interface SessionStartEvent extends BaseEvent {
   git_branch?: string;
   /** Git worktree name */
   git_worktree?: string;
+  /** Canonical git repo root path (main worktree root) */
+  git_repo_root?: string;
 }
 
 /**
@@ -221,6 +225,8 @@ export interface ContextUpdateEvent extends BaseEvent {
   git_branch?: string;
   /** Git worktree name (basename of worktree dir) */
   git_worktree?: string;
+  /** Canonical git repo root path (main worktree root) */
+  git_repo_root?: string;
 }
 
 /**

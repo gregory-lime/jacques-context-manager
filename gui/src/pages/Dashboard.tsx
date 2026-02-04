@@ -18,7 +18,7 @@ import { planModalConfig, agentModalConfig, webSearchModalConfig } from '../comp
 import { SessionCard } from '../components/SessionCard';
 import { ActiveSessionViewer } from '../components/ActiveSessionViewer';
 import { PlanIcon, AgentIcon, StatusDot } from '../components/Icons';
-import { Globe, Terminal } from 'lucide-react';
+import { Globe, Terminal, GitBranch } from 'lucide-react';
 import type { Session } from '../types';
 
 // ─── Color Constants ─────────────────────────────────────────
@@ -110,6 +110,8 @@ interface SessionListItem {
   inputTokens?: number;
   outputTokens?: number;
   project?: string;
+  gitBranch?: string;
+  gitWorktree?: string;
 }
 
 interface PlanItem { title: string; sessionId: string; sessionCount: number; messageIndex: number; source: 'embedded' | 'write' | 'agent'; filePath?: string; agentId?: string; }
@@ -175,6 +177,8 @@ function toSessionListItems(liveSessions: Session[], savedSessions: SessionEntry
       inputTokens: session.context_metrics?.total_input_tokens || undefined,
       outputTokens: session.context_metrics?.total_output_tokens || undefined,
       project: session.project,
+      gitBranch: session.git_branch || undefined,
+      gitWorktree: session.git_worktree || undefined,
     });
   }
 
@@ -203,6 +207,8 @@ function toSessionListItems(liveSessions: Session[], savedSessions: SessionEntry
       inputTokens: session.tokens ? session.tokens.input + session.tokens.cacheRead : undefined,
       outputTokens: session.tokens?.output || undefined,
       project: session.projectSlug,
+      gitBranch: session.gitBranch || undefined,
+      gitWorktree: session.gitWorktree || undefined,
     });
   }
 
@@ -573,21 +579,19 @@ export function Dashboard() {
         </section>
 
         {/* ── Session History ── */}
-        <section className="jacques-animate-in" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ flexShrink: 0 }}>
-            <SectionHeader title="SESSION HISTORY" accentColor={PALETTE.coral} />
-          </div>
+        <section className="jacques-animate-in" style={{ flexShrink: 0 }}>
+          <SectionHeader title="SESSION HISTORY" accentColor={PALETTE.coral} />
 
           {loading ? (
-            <div style={{ ...styles.historyList, flex: 1, overflowY: 'auto', minHeight: 0 }}>
+            <div style={styles.historyList}>
               {Array.from({ length: 8 }, (_, i) => (
                 <SkeletonHistoryRow key={i} />
               ))}
             </div>
           ) : sessionList.length === 0 ? (
-            <div style={{ ...styles.emptyText, flex: 1 }}>No sessions yet</div>
+            <div style={styles.emptyText}>No sessions yet</div>
           ) : (
-            <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0 }}>
+            <div className="jacques-dashboard" style={styles.historyScrollable}>
               <div style={styles.historyList}>
                 {sessionList.map((session, index) => {
                   const isLive = session.source === 'live';
@@ -635,8 +639,17 @@ export function Dashboard() {
                         )}
                       </div>
 
-                      {/* Row 2: Tokens + badges */}
+                      {/* Row 2: Git branch/worktree + Tokens + badges */}
                       <div style={styles.historyMetaRow}>
+                        {session.gitBranch && (
+                          <span style={styles.historyGit}>
+                            <GitBranch size={10} color={PALETTE.muted} />
+                            <span>{session.gitBranch}</span>
+                            {session.gitWorktree && (
+                              <span style={{ opacity: 0.6 }}>({session.gitWorktree})</span>
+                            )}
+                          </span>
+                        )}
                         {session.inputTokens !== undefined && (
                           <span style={styles.historyTokens}>
                             <span style={{ color: PALETTE.teal }}>↓</span> {formatTokens(session.inputTokens)}
@@ -944,6 +957,14 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '12px',
     paddingLeft: '22px',
   },
+  historyGit: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontSize: '11px',
+    color: PALETTE.muted,
+    fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
+  },
   historyTokens: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -1011,6 +1032,13 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '10px',
     fontWeight: 600,
     letterSpacing: '0.02em',
+  },
+
+  // Session history scrollable — fits ~10 rows
+  historyScrollable: {
+    maxHeight: '480px',
+    overflowY: 'auto',
+    overflowX: 'hidden',
   },
 
   // Scrollable list container — fits ~6 rows, scrolls the rest

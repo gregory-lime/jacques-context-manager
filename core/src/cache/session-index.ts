@@ -16,6 +16,7 @@
 import { promises as fs } from "fs";
 import * as path from "path";
 import { homedir } from "os";
+import { execSync } from "child_process";
 import { parseJSONL, getEntryStatistics, type ParsedEntry } from "../session/parser.js";
 import { listSubagentFiles, decodeProjectPath, type SubagentFile } from "../session/detector.js";
 import { PLAN_TRIGGER_PATTERNS, extractPlanTitle } from "../archive/plan-extractor.js";
@@ -71,6 +72,12 @@ export interface SessionEntry {
     /** Tokens read from cache */
     cacheRead: number;
   };
+  /** Canonical git repo root path (main worktree root, shared across all worktrees) */
+  gitRepoRoot?: string;
+  /** Git branch name at time of indexing */
+  gitBranch?: string;
+  /** Git worktree name (basename of project dir, only set for worktrees) */
+  gitWorktree?: string;
   /** File size in bytes */
   fileSizeBytes: number;
   /** File modification time */
@@ -521,6 +528,66 @@ async function extractAgentsAndSearches(
   return { exploreAgents, webSearches };
 }
 
+interface GitInfo {
+  repoRoot?: string;
+  branch?: string;
+  worktree?: string;
+}
+
+/**
+ * Detect git info for a project path: repo root, branch, and worktree name.
+ * If the path doesn't exist, walks up parent directories to find a git repo.
+ */
+function detectGitInfo(projectPath: string): GitInfo {
+  // Try the exact path first, then walk up parents if it doesn't exist
+  const candidates = [projectPath];
+  let dir = projectPath;
+  while (true) {
+    const parent = path.dirname(dir);
+    if (parent === dir) break; // reached filesystem root
+    candidates.push(parent);
+    dir = parent;
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const output = execSync(
+        `git -C "${candidate}" rev-parse --abbrev-ref HEAD --git-common-dir`,
+        { encoding: "utf-8", timeout: 5000, stdio: ["pipe", "pipe", "pipe"] }
+      ).trim();
+
+      if (!output) continue;
+
+      const lines = output.split("\n");
+      const branch = lines[0] || undefined;
+      const commonDir = lines[1];
+
+      if (!commonDir) return { branch };
+
+      // Resolve relative paths (e.g., "../.git" from subdirectories) to absolute
+      const resolved = path.resolve(candidate, commonDir);
+
+      let repoRoot: string;
+      let worktree: string | undefined;
+
+      if (resolved.endsWith(`${path.sep}.git`) || resolved.endsWith("/.git")) {
+        // Normal repo or subdirectory: .git parent is repo root
+        repoRoot = path.dirname(resolved);
+      } else {
+        // Worktree: common dir points to shared .git dir
+        repoRoot = path.dirname(resolved);
+        worktree = path.basename(projectPath);
+      }
+
+      return { repoRoot, branch, worktree };
+    } catch {
+      // This candidate didn't work, try the next parent
+      continue;
+    }
+  }
+  return {};
+}
+
 /**
  * Extract metadata from a single JSONL file
  */
@@ -575,6 +642,9 @@ export async function extractSessionMetadata(
     // Extract explore agents and web searches (with token costs from subagent files)
     const { exploreAgents, webSearches } = await extractAgentsAndSearches(entries, subagentFiles);
 
+    // Detect git info from project path
+    const gitInfo = detectGitInfo(projectPath);
+
     // Use LAST turn's input tokens for context window size
     // Each turn reports the FULL context, so summing would overcount
     // Total context = fresh input + cache read (cache_creation is subset of fresh, not additional)
@@ -610,6 +680,9 @@ export async function extractSessionMetadata(
       mode: mode || undefined,
       planCount: planRefs.length > 0 ? planRefs.length : undefined,
       planRefs: planRefs.length > 0 ? planRefs : undefined,
+      gitRepoRoot: gitInfo.repoRoot || undefined,
+      gitBranch: gitInfo.branch || undefined,
+      gitWorktree: gitInfo.worktree || undefined,
       exploreAgents: exploreAgents.length > 0 ? exploreAgents : undefined,
       webSearches: webSearches.length > 0 ? webSearches : undefined,
     };
@@ -788,7 +861,8 @@ export async function getSessionEntry(
 }
 
 /**
- * Get sessions grouped by project
+ * Get sessions grouped by project.
+ * Uses basename of gitRepoRoot when available to group worktrees together.
  */
 export async function getSessionsByProject(): Promise<
   Map<string, SessionEntry[]>
@@ -797,9 +871,13 @@ export async function getSessionsByProject(): Promise<
   const byProject = new Map<string, SessionEntry[]>();
 
   for (const session of index.sessions) {
-    const existing = byProject.get(session.projectSlug) || [];
+    // Group by git repo root basename when available (groups worktrees together)
+    const groupKey = session.gitRepoRoot
+      ? path.basename(session.gitRepoRoot)
+      : session.projectSlug;
+    const existing = byProject.get(groupKey) || [];
     existing.push(session);
-    byProject.set(session.projectSlug, existing);
+    byProject.set(groupKey, existing);
   }
 
   return byProject;

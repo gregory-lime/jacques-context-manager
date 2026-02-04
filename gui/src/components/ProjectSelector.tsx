@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { colors } from '../styles/theme';
 import type { Session } from '../types';
+import { getProjectGroupKey } from '../utils/git';
 
 export interface ProjectInfo {
   name: string;
@@ -28,9 +29,9 @@ export function ProjectSelector({
   const projects = useMemo(() => {
     const projectMap = new Map<string, ProjectInfo>();
 
-    // Group sessions by project
+    // Group sessions by project (using git_repo_root when available)
     sessions.forEach((session) => {
-      const name = session.project || 'unknown';
+      const name = getProjectGroupKey(session) || 'unknown';
       const existing = projectMap.get(name);
 
       if (existing) {

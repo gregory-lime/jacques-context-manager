@@ -367,36 +367,51 @@ class BaseAdapter(ABC):
 
     def detect_git_info(self, project_path: str) -> dict:
         """
-        Detect git branch and worktree status from project directory.
+        Detect git branch, worktree, and repo root from project directory.
+
+        Uses hooks/git-detect.sh as single source of truth.
+        Falls back to inline detection if script not found.
 
         Returns dict with:
             - git_branch: Current branch name (empty string if not a git repo)
             - git_worktree: Worktree name if in a worktree (empty string otherwise)
+            - git_repo_root: Main worktree root path (empty string if not a git repo)
         """
-        result = {'git_branch': '', 'git_worktree': ''}
+        result = {'git_branch': '', 'git_worktree': '', 'git_repo_root': ''}
         if not project_path or not os.path.isdir(project_path):
             return result
         try:
             import subprocess
-            branch = subprocess.run(
-                ['git', '-C', project_path, 'rev-parse', '--abbrev-ref', 'HEAD'],
-                capture_output=True, text=True, timeout=5
-            )
-            if branch.returncode == 0:
-                result['git_branch'] = branch.stdout.strip()
+            # Try git-detect.sh first (single source of truth)
+            script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            script_path = os.path.join(script_dir, 'git-detect.sh')
+            if os.path.isfile(script_path) and os.access(script_path, os.X_OK):
+                proc = subprocess.run(
+                    [script_path, project_path],
+                    capture_output=True, text=True, timeout=5
+                )
+                if proc.returncode == 0:
+                    lines = proc.stdout.split('\n')
+                    result['git_branch'] = lines[0] if len(lines) > 0 else ''
+                    result['git_worktree'] = lines[1] if len(lines) > 1 else ''
+                    result['git_repo_root'] = lines[2] if len(lines) > 2 else ''
+                    return result
 
-            # Detect worktree: git-dir differs from git-common-dir
-            git_dir = subprocess.run(
-                ['git', '-C', project_path, 'rev-parse', '--git-dir'],
+            # Fallback: inline detection (same algorithm as git-detect.sh)
+            proc = subprocess.run(
+                ['git', '-C', project_path, 'rev-parse', '--abbrev-ref', 'HEAD', '--git-common-dir'],
                 capture_output=True, text=True, timeout=5
             )
-            common_dir = subprocess.run(
-                ['git', '-C', project_path, 'rev-parse', '--git-common-dir'],
-                capture_output=True, text=True, timeout=5
-            )
-            if (git_dir.returncode == 0 and common_dir.returncode == 0 and
-                    git_dir.stdout.strip() != common_dir.stdout.strip()):
-                result['git_worktree'] = os.path.basename(project_path)
+            if proc.returncode == 0:
+                lines = proc.stdout.strip().split('\n')
+                if len(lines) >= 2:
+                    result['git_branch'] = lines[0]
+                    common = lines[1]
+                    if common == '.git':
+                        result['git_repo_root'] = os.path.realpath(project_path)
+                    elif common:
+                        result['git_repo_root'] = os.path.dirname(common)
+                        result['git_worktree'] = os.path.basename(project_path)
         except Exception:
             pass
         return result

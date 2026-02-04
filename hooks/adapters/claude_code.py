@@ -213,6 +213,7 @@ class ClaudeCodeAdapter(BaseAdapter):
             autocompact=autocompact,
             git_branch=git_info['git_branch'],
             git_worktree=git_info['git_worktree'],
+            git_repo_root=git_info['git_repo_root'],
         )
     
     # =========================================================================

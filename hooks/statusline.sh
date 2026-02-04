@@ -41,9 +41,10 @@ IFS='§' read -r session_id used_pct remaining_pct ctx_size total_input total_ou
     .transcript_path // ""
   ] | join("§")' <<< "$input")"
 
-# Detect git branch and worktree from project directory (cached for 60s)
+# Detect git branch, worktree, and repo root from project directory (cached for 60s)
 git_branch=""
 git_worktree=""
+git_repo_root=""
 git_dir="${project_dir:-$cwd}"
 if [ -n "$git_dir" ] && [ -d "$git_dir" ]; then
   git_cache="/tmp/jacques-git-$(echo "$git_dir" | tr '/' '-').cache"
@@ -53,17 +54,19 @@ if [ -n "$git_dir" ] && [ -d "$git_dir" ]; then
     [ "$cache_age" -lt 60 ] && cache_stale=0
   fi
   if [ "$cache_stale" = "1" ]; then
-    git_branch=$(git -C "$git_dir" rev-parse --abbrev-ref HEAD 2>/dev/null)
-    git_git_dir=$(git -C "$git_dir" rev-parse --git-dir 2>/dev/null)
-    git_common_dir=$(git -C "$git_dir" rev-parse --git-common-dir 2>/dev/null)
-    if [ -n "$git_git_dir" ] && [ -n "$git_common_dir" ] && [ "$git_git_dir" != "$git_common_dir" ]; then
-      git_worktree=$(basename "$git_dir")
+    # Use git-detect.sh as single source of truth
+    script_dir="$(cd "$(dirname "$0")" && pwd)"
+    if [ -x "$script_dir/git-detect.sh" ]; then
+      git_output=$("$script_dir/git-detect.sh" "$git_dir")
+      git_branch=$(echo "$git_output" | sed -n '1p')
+      git_worktree=$(echo "$git_output" | sed -n '2p')
+      git_repo_root=$(echo "$git_output" | sed -n '3p')
     fi
-    printf '%s\n%s' "$git_branch" "$git_worktree" > "$git_cache" 2>/dev/null
+    printf '%s\n%s\n%s' "$git_branch" "$git_worktree" "$git_repo_root" > "$git_cache" 2>/dev/null
   else
-    git_branch=$(head -1 "$git_cache" 2>/dev/null)
-    git_worktree=$(tail -1 "$git_cache" 2>/dev/null)
-    [ "$git_branch" = "$git_worktree" ] && git_worktree=""
+    git_branch=$(sed -n '1p' "$git_cache" 2>/dev/null)
+    git_worktree=$(sed -n '2p' "$git_cache" 2>/dev/null)
+    git_repo_root=$(sed -n '3p' "$git_cache" 2>/dev/null)
   fi
 fi
 
@@ -171,7 +174,7 @@ if [ -S /tmp/jacques.sock ]; then
   escaped_title="${escaped_title//$'\t'/\\t}"
   escaped_title="${escaped_title//$'\n'/ }"
   payload=$(cat <<EOF
-{"event":"context_update","session_id":"$session_id","used_percentage":$used_pct,"remaining_percentage":$remaining_pct,"context_window_size":$ctx_size,"total_input_tokens":$total_input,"total_output_tokens":$total_output,"model":"$model","model_display_name":"$model_display","cwd":"$cwd","project_dir":"$project_dir","timestamp":$now,"autocompact":{"enabled":$autocompact_enabled,"threshold":$autocompact_threshold,"bug_threshold":$autocompact_bug_threshold},"terminal_key":"$terminal_key","session_title":"$escaped_title","transcript_path":"$transcript_path","git_branch":"$git_branch","git_worktree":"$git_worktree"}
+{"event":"context_update","session_id":"$session_id","used_percentage":$used_pct,"remaining_percentage":$remaining_pct,"context_window_size":$ctx_size,"total_input_tokens":$total_input,"total_output_tokens":$total_output,"model":"$model","model_display_name":"$model_display","cwd":"$cwd","project_dir":"$project_dir","timestamp":$now,"autocompact":{"enabled":$autocompact_enabled,"threshold":$autocompact_threshold,"bug_threshold":$autocompact_bug_threshold},"terminal_key":"$terminal_key","session_title":"$escaped_title","transcript_path":"$transcript_path","git_branch":"$git_branch","git_worktree":"$git_worktree","git_repo_root":"$git_repo_root"}
 EOF
 )
 
