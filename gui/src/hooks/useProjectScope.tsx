@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, createContext, useContext, type ReactNode } from 'react';
 import type { Session } from '../types';
+import { getProjectGroupKey } from '../utils/git';
 
 interface ProjectScopeContextValue {
   selectedProject: string | null;
@@ -24,7 +25,7 @@ export function ProjectScopeProvider({ children }: ProjectScopeProviderProps) {
       if (selectedProject === null) {
         return sessions;
       }
-      return sessions.filter((s) => s.project === selectedProject);
+      return sessions.filter((s) => getProjectGroupKey(s) === selectedProject);
     },
     [selectedProject]
   );

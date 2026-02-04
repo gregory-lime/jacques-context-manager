@@ -82,6 +82,8 @@ export interface Session {
   autocompact: AutoCompactStatus | null;
   git_branch?: string | null;
   git_worktree?: string | null;
+  /** Canonical git repo root path (main worktree root, shared across all worktrees) */
+  git_repo_root?: string | null;
 }
 
 // ============================================================

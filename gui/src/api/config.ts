@@ -574,6 +574,12 @@ export interface SessionEntry {
     /** Tokens read from cache */
     cacheRead: number;
   };
+  /** Canonical git repo root path (main worktree root, shared across all worktrees) */
+  gitRepoRoot?: string;
+  /** Git branch name at time of indexing */
+  gitBranch?: string;
+  /** Git worktree name (basename of project dir, only set for worktrees) */
+  gitWorktree?: string;
   /** File size in bytes */
   fileSizeBytes: number;
   /** File modification time */

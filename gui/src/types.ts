@@ -53,6 +53,12 @@ export interface Session {
   last_activity: number;
   registered_at: number;
   transcript_path?: string;
+  /** Current git branch name */
+  git_branch?: string | null;
+  /** Git worktree name (if session is in a worktree) */
+  git_worktree?: string | null;
+  /** Canonical git repo root path (main worktree root, shared across all worktrees) */
+  git_repo_root?: string | null;
 }
 
 // Server message types

@@ -79,6 +79,9 @@ export class SessionRegistry {
         existing.git_branch = event.git_branch || null;
         existing.git_worktree = event.git_worktree || null;
       }
+      if (event.git_repo_root !== undefined) {
+        existing.git_repo_root = event.git_repo_root || null;
+      }
       this.log(`[Registry] Terminal key updated: ${existing.terminal_key}`);
       return existing;
     }
@@ -101,6 +104,7 @@ export class SessionRegistry {
       autocompact: event.autocompact || null,
       git_branch: event.git_branch || null,
       git_worktree: event.git_worktree || null,
+      git_repo_root: event.git_repo_root || null,
     };
 
     this.sessions.set(event.session_id, session);
@@ -197,6 +201,7 @@ export class SessionRegistry {
         autocompact: event.autocompact || null,
         git_branch: event.git_branch || null,
         git_worktree: event.git_worktree || null,
+        git_repo_root: event.git_repo_root || null,
       };
 
       this.sessions.set(event.session_id, session);
@@ -286,6 +291,14 @@ export class SessionRegistry {
       }
       session.git_branch = event.git_branch || null;
       session.git_worktree = event.git_worktree || null;
+    }
+
+    // Update git_repo_root if provided (from statusLine hook)
+    if (event.git_repo_root !== undefined) {
+      if (event.git_repo_root !== session.git_repo_root) {
+        this.log(`[Registry] Git repo root updated: "${session.git_repo_root}" -> "${event.git_repo_root}"`);
+      }
+      session.git_repo_root = event.git_repo_root || null;
     }
 
     if (isNewSession) {

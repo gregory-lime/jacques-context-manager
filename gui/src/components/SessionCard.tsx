@@ -147,6 +147,17 @@ export function SessionCard({
           <span style={styles.title}>{displayTitle}</span>
         </div>
 
+        {/* Git branch + worktree indicator */}
+        {session.git_branch && (
+          <div style={styles.gitRow}>
+            <GitBranch size={11} color={colors.textMuted} />
+            <span style={styles.gitBranch}>{session.git_branch}</span>
+            {session.git_worktree && (
+              <span style={styles.gitWorktree}>({session.git_worktree})</span>
+            )}
+          </div>
+        )}
+
         {/* Context Meter */}
         <div style={styles.meter}>
           <ContextMeter metrics={session.context_metrics} />
@@ -269,6 +280,24 @@ const styles: Record<string, React.CSSProperties> = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap' as const,
     lineHeight: 1.3,
+  },
+
+  // Git info
+  gitRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px',
+    marginBottom: '8px',
+  },
+  gitBranch: {
+    fontSize: '11px',
+    color: colors.textMuted,
+    fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
+  },
+  gitWorktree: {
+    fontSize: '10px',
+    color: colors.textMuted,
+    opacity: 0.7,
   },
 
   // Meter
