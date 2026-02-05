@@ -1,10 +1,11 @@
 /**
- * SuggestionChips - Inline suggestion chips above chat input
+ * SuggestionChips - Terminal-style command suggestions
  *
- * Rule-based suggestions based on catalog state.
- * Disappear after first message sent.
+ * Minimal chips that look like command hints.
+ * Rule-based suggestions from catalog state.
  */
 
+import { Zap } from 'lucide-react';
 import { colors } from '../../styles/theme';
 import type { ProjectCatalog } from '../../types';
 
@@ -20,15 +21,21 @@ export function SuggestionChips({ catalog, onSelect }: SuggestionChipsProps) {
 
   return (
     <div style={styles.container}>
-      {suggestions.map((suggestion, i) => (
-        <button
-          key={i}
-          style={styles.chip}
-          onClick={() => onSelect(suggestion)}
-        >
-          {suggestion}
-        </button>
-      ))}
+      <div style={styles.label}>
+        <Zap size={9} color={colors.textMuted} />
+        <span>suggestions</span>
+      </div>
+      <div style={styles.chips}>
+        {suggestions.map((suggestion, i) => (
+          <button
+            key={i}
+            style={styles.chip}
+            onClick={() => onSelect(suggestion)}
+          >
+            {suggestion}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -40,19 +47,19 @@ function generateSuggestions(catalog: ProjectCatalog | null): string[] {
 
   if (catalog.context.length === 0 && catalog.plans.length === 0) {
     // Empty catalog
-    suggestions.push('How do I add context files?');
-    suggestions.push('Create a project overview note');
+    suggestions.push('how do I add context files?');
+    suggestions.push('create a project overview');
   } else {
     if (catalog.context.length > 0) {
       const firstName = catalog.context[0].name;
-      suggestions.push(`Summarize "${firstName}"`);
-      suggestions.push("What's missing from my context?");
+      suggestions.push(`summarize "${firstName}"`);
+      suggestions.push("what's missing from my context?");
     }
     if (catalog.plans.length > 0) {
-      suggestions.push('Summarize implementation plans');
+      suggestions.push('list implementation plans');
     }
     if (catalog.context.length > 2) {
-      suggestions.push('Create a table of contents');
+      suggestions.push('create table of contents');
     }
   }
 
@@ -61,22 +68,37 @@ function generateSuggestions(catalog: ProjectCatalog | null): string[] {
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
+    marginBottom: '12px',
+  },
+  label: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px',
+    marginBottom: '8px',
+    fontSize: '9px',
+    color: colors.textMuted,
+    fontFamily: "'JetBrains Mono', monospace",
+    textTransform: 'lowercase' as const,
+    letterSpacing: '0.02em',
+  },
+  chips: {
     display: 'flex',
     flexWrap: 'wrap' as const,
     gap: '6px',
-    padding: '0 0 8px',
   },
   chip: {
     display: 'inline-flex',
     alignItems: 'center',
-    padding: '6px 12px',
-    borderRadius: '16px',
+    padding: '5px 10px',
+    borderRadius: '4px',
     border: `1px solid ${colors.borderSubtle}`,
     backgroundColor: 'transparent',
     color: colors.textSecondary,
-    fontSize: '12px',
+    fontSize: '11px',
+    fontFamily: "'JetBrains Mono', monospace",
     cursor: 'pointer',
     transition: 'all 150ms ease',
     whiteSpace: 'nowrap' as const,
+    letterSpacing: '-0.02em',
   },
 };

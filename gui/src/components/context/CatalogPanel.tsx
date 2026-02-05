@@ -1,8 +1,8 @@
 /**
- * CatalogPanel - Left panel showing project context catalog
+ * CatalogPanel - Minimal context catalog sidebar
  *
- * Three collapsible sections: Context Files, Plans, Sessions.
- * Search filter, click-to-open ContentModal, Add Context button.
+ * Clean, monochrome design that matches the rest of the app.
+ * No colored accents except coral for primary actions.
  */
 
 import { useState } from 'react';
@@ -13,21 +13,14 @@ import {
   ChevronLeft,
   ChevronRightIcon,
   Plus,
-  BookOpen,
-  Clock,
+  FileCode,
+  GitBranch,
+  History,
   Loader,
+  Layers,
 } from 'lucide-react';
 import { colors } from '../../styles/theme';
-import { SearchInput } from '../ui/SearchInput';
 import type { ProjectCatalog, CatalogItem, CatalogPlanEntry, CatalogSessionEntry } from '../../types';
-
-// ─── Type Colors ──────────────────────────────────────────────
-
-const TYPE_COLORS = {
-  context: '#E67E52',  // coral
-  plan: '#A78BFA',     // purple
-  session: '#60A5FA',  // blue
-};
 
 // ─── Props ────────────────────────────────────────────────────
 
@@ -76,28 +69,25 @@ export function CatalogPanel({
 
   const totalItems = contextItems.length + planItems.length + sessionItems.length;
 
-  // Collapsed state: icon rail
+  // Collapsed state
   if (collapsed) {
     return (
       <div style={styles.collapsedContainer}>
         <button
-          style={styles.collapseToggle}
+          style={styles.expandBtn}
           onClick={onToggleCollapse}
-          title="Expand catalog"
+          title="Expand"
         >
-          <ChevronRightIcon size={16} />
+          <ChevronRightIcon size={14} />
         </button>
         <div style={styles.collapsedIcons}>
-          <div style={{ ...styles.collapsedIcon, color: TYPE_COLORS.context }} title={`${contextItems.length} files`}>
-            <FileText size={16} />
-          </div>
-          <div style={{ ...styles.collapsedIcon, color: TYPE_COLORS.plan }} title={`${planItems.length} plans`}>
-            <BookOpen size={16} />
-          </div>
-          <div style={{ ...styles.collapsedIcon, color: TYPE_COLORS.session }} title={`${sessionItems.length} sessions`}>
-            <Clock size={16} />
-          </div>
+          <CollapsedIcon icon={<FileCode size={15} />} count={contextItems.length} />
+          <CollapsedIcon icon={<GitBranch size={15} />} count={planItems.length} />
+          <CollapsedIcon icon={<History size={15} />} count={sessionItems.length} />
         </div>
+        <button style={styles.collapsedAddBtn} onClick={onAddContext} title="New context">
+          <Plus size={16} strokeWidth={2} />
+        </button>
       </div>
     );
   }
@@ -106,50 +96,47 @@ export function CatalogPanel({
     <div style={styles.container}>
       {/* Header */}
       <div style={styles.header}>
-        <span style={styles.headerTitle}>CATALOG</span>
-        <button
-          style={styles.collapseToggle}
-          onClick={onToggleCollapse}
-          title="Collapse catalog"
-        >
-          <ChevronLeft size={16} />
+        <div style={styles.headerLeft}>
+          <Layers size={14} color={colors.accent} strokeWidth={2} />
+          <span style={styles.headerTitle}>Context</span>
+        </div>
+        <button style={styles.collapseBtn} onClick={onToggleCollapse} title="Collapse">
+          <ChevronLeft size={14} />
         </button>
       </div>
 
       {/* Search */}
-      <div style={styles.searchContainer}>
-        <SearchInput
+      <div style={styles.searchWrap}>
+        <input
+          type="text"
           value={search}
-          onChange={setSearch}
-          placeholder="Filter..."
-          resultCount={search ? totalItems : undefined}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="filter..."
+          style={styles.searchInput}
         />
+        {search && <span style={styles.searchCount}>{totalItems}</span>}
       </div>
 
       {/* Sections */}
-      <div style={styles.sectionsContainer}>
-        {/* Context Files */}
+      <div style={styles.sections}>
+        {/* Files */}
         <Section
-          title={`CONTEXT FILES (${contextItems.length})`}
-          color={TYPE_COLORS.context}
+          icon={<FileCode size={13} />}
+          label="Files"
+          count={contextItems.length}
           expanded={expandedSections.context}
           onToggle={() => toggleSection('context')}
         >
           {loading && contextItems.length === 0 ? (
-            <div style={styles.loadingRow}>
-              <Loader size={12} style={{ animation: 'spin 1s linear infinite' }} />
-              <span>Loading...</span>
-            </div>
+            <LoadingRow />
           ) : contextItems.length === 0 ? (
-            <div style={styles.emptyRow}>No context files</div>
+            <EmptyRow text="No context files" />
           ) : (
             contextItems.map(file => (
               <ItemRow
                 key={file.id}
-                icon={<FileText size={13} />}
                 label={file.name}
-                sublabel={file.source}
-                color={TYPE_COLORS.context}
+                meta={file.source}
                 onClick={() => onItemClick('context', file)}
               />
             ))
@@ -158,21 +145,20 @@ export function CatalogPanel({
 
         {/* Plans */}
         <Section
-          title={`PLANS (${planItems.length})`}
-          color={TYPE_COLORS.plan}
+          icon={<GitBranch size={13} />}
+          label="Plans"
+          count={planItems.length}
           expanded={expandedSections.plans}
           onToggle={() => toggleSection('plans')}
         >
           {planItems.length === 0 ? (
-            <div style={styles.emptyRow}>No plans</div>
+            <EmptyRow text="No plans" />
           ) : (
             planItems.map(plan => (
               <ItemRow
                 key={plan.id}
-                icon={<BookOpen size={13} />}
                 label={plan.title}
-                sublabel={`${plan.sessions.length} session${plan.sessions.length !== 1 ? 's' : ''}`}
-                color={TYPE_COLORS.plan}
+                meta={plan.sessions.length > 0 ? `${plan.sessions.length}` : undefined}
                 onClick={() => onItemClick('plan', plan)}
               />
             ))
@@ -181,21 +167,20 @@ export function CatalogPanel({
 
         {/* Sessions */}
         <Section
-          title={`SESSIONS (${sessionItems.length})`}
-          color={TYPE_COLORS.session}
+          icon={<History size={13} />}
+          label="Sessions"
+          count={sessionItems.length}
           expanded={expandedSections.sessions}
           onToggle={() => toggleSection('sessions')}
         >
           {sessionItems.length === 0 ? (
-            <div style={styles.emptyRow}>No saved sessions</div>
+            <EmptyRow text="No saved sessions" />
           ) : (
             sessionItems.map(session => (
               <ItemRow
                 key={session.id}
-                icon={<Clock size={13} />}
                 label={session.title}
-                sublabel={`${session.messageCount} msgs`}
-                color={TYPE_COLORS.session}
+                meta={`${session.messageCount}`}
                 onClick={() => onItemClick('session', session)}
               />
             ))
@@ -203,28 +188,41 @@ export function CatalogPanel({
         </Section>
       </div>
 
-      {/* Footer: Add Context */}
+      {/* Add Button */}
       <div style={styles.footer}>
         <button style={styles.addButton} onClick={onAddContext}>
-          <Plus size={14} />
-          <span>Add Context</span>
+          <Plus size={14} strokeWidth={2.5} />
+          <span>New Context</span>
         </button>
       </div>
     </div>
   );
 }
 
-// ─── Section Sub-component ────────────────────────────────────
+// ─── Collapsed Icon ───────────────────────────────────────────
+
+function CollapsedIcon({ icon, count }: { icon: React.ReactNode; count: number }) {
+  return (
+    <div style={styles.collapsedIcon}>
+      <span style={{ color: colors.textMuted }}>{icon}</span>
+      {count > 0 && <span style={styles.collapsedCount}>{count}</span>}
+    </div>
+  );
+}
+
+// ─── Section ──────────────────────────────────────────────────
 
 function Section({
-  title,
-  color,
+  icon,
+  label,
+  count,
   expanded,
   onToggle,
   children,
 }: {
-  title: string;
-  color: string;
+  icon: React.ReactNode;
+  label: string;
+  count: number;
   expanded: boolean;
   onToggle: () => void;
   children: React.ReactNode;
@@ -232,37 +230,54 @@ function Section({
   return (
     <div style={styles.section}>
       <button style={styles.sectionHeader} onClick={onToggle}>
-        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <span style={{ ...styles.sectionTitle, color }}>{title}</span>
+        <span style={styles.sectionChevron}>
+          {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        </span>
+        <span style={styles.sectionIcon}>{icon}</span>
+        <span style={styles.sectionLabel}>{label}</span>
+        <span style={styles.sectionCount}>{count}</span>
       </button>
-      {expanded && <div style={styles.sectionContent}>{children}</div>}
+      {expanded && (
+        <div style={styles.sectionContent}>
+          {children}
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── Item Row Sub-component ──────────────────────────────────
+// ─── Item Row ─────────────────────────────────────────────────
 
 function ItemRow({
-  icon,
   label,
-  sublabel,
-  color,
+  meta,
   onClick,
 }: {
-  icon: React.ReactNode;
   label: string;
-  sublabel?: string;
-  color: string;
+  meta?: string;
   onClick: () => void;
 }) {
   return (
     <button style={styles.itemRow} onClick={onClick}>
-      <span style={{ color, flexShrink: 0, display: 'inline-flex' }}>{icon}</span>
+      <FileText size={12} color={colors.textMuted} />
       <span style={styles.itemLabel}>{label}</span>
-      {sublabel && (
-        <span style={styles.itemSublabel}>{sublabel}</span>
-      )}
+      {meta && <span style={styles.itemMeta}>{meta}</span>}
     </button>
+  );
+}
+
+// ─── Empty / Loading ──────────────────────────────────────────
+
+function EmptyRow({ text }: { text: string }) {
+  return <div style={styles.emptyRow}>{text}</div>;
+}
+
+function LoadingRow() {
+  return (
+    <div style={styles.loadingRow}>
+      <Loader size={11} style={{ animation: 'spin 1s linear infinite' }} />
+      <span>Loading...</span>
+    </div>
   );
 }
 
@@ -280,7 +295,7 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
   },
   collapsedContainer: {
-    width: '48px',
+    width: '52px',
     flexShrink: 0,
     display: 'flex',
     flexDirection: 'column',
@@ -288,90 +303,160 @@ const styles: Record<string, React.CSSProperties> = {
     borderRight: `1px solid ${colors.borderSubtle}`,
     backgroundColor: colors.bgSecondary,
     height: '100%',
-    paddingTop: '8px',
-    gap: '8px',
+    paddingTop: '14px',
+  },
+  expandBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 28,
+    height: 28,
+    border: 'none',
+    borderRadius: '6px',
+    backgroundColor: 'transparent',
+    color: colors.textMuted,
+    cursor: 'pointer',
   },
   collapsedIcons: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '12px',
-    paddingTop: '8px',
+    alignItems: 'center',
+    gap: '24px',
+    paddingTop: '24px',
+    flex: 1,
   },
   collapsedIcon: {
     display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '4px',
+  },
+  collapsedCount: {
+    fontSize: '10px',
+    fontFamily: "'JetBrains Mono', monospace",
+    fontWeight: 500,
+    color: colors.textMuted,
+  },
+  collapsedAddBtn: {
+    display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    opacity: 0.6,
+    width: 36,
+    height: 36,
+    marginBottom: '16px',
+    border: 'none',
+    borderRadius: '8px',
+    backgroundColor: colors.accent,
+    color: '#000',
+    cursor: 'pointer',
   },
   header: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '12px 12px 8px',
-    flexShrink: 0,
+    padding: '16px 14px 14px',
+    borderBottom: `1px solid ${colors.borderSubtle}`,
+  },
+  headerLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
   },
   headerTitle: {
-    fontSize: '11px',
+    fontSize: '14px',
     fontWeight: 600,
-    color: colors.textMuted,
-    letterSpacing: '0.5px',
+    color: colors.textPrimary,
+    letterSpacing: '-0.01em',
   },
-  collapseToggle: {
+  collapseBtn: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    width: 24,
-    height: 24,
+    width: 26,
+    height: 26,
     border: 'none',
-    borderRadius: '4px',
+    borderRadius: '6px',
     backgroundColor: 'transparent',
     color: colors.textMuted,
     cursor: 'pointer',
-    transition: 'color 150ms ease',
   },
-  searchContainer: {
-    padding: '0 8px 8px',
-    flexShrink: 0,
+  searchWrap: {
+    position: 'relative',
+    padding: '12px 12px 8px',
   },
-  sectionsContainer: {
+  searchInput: {
+    width: '100%',
+    padding: '8px 12px',
+    fontSize: '12px',
+    fontFamily: "'JetBrains Mono', monospace",
+    backgroundColor: colors.bgPrimary,
+    border: `1px solid ${colors.borderSubtle}`,
+    borderRadius: '6px',
+    color: colors.textPrimary,
+    outline: 'none',
+  },
+  searchCount: {
+    position: 'absolute',
+    right: '22px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    fontSize: '10px',
+    color: colors.accent,
+    fontFamily: "'JetBrains Mono', monospace",
+    fontWeight: 600,
+  },
+  sections: {
     flex: 1,
     overflow: 'auto',
-    padding: '0 4px',
+    padding: '8px 0 16px',
   },
   section: {
-    marginBottom: '4px',
+    marginBottom: '20px',
   },
   sectionHeader: {
     display: 'flex',
     alignItems: 'center',
-    gap: '4px',
+    gap: '6px',
     width: '100%',
-    padding: '6px 8px',
+    padding: '6px 14px',
     border: 'none',
-    borderRadius: '4px',
     backgroundColor: 'transparent',
-    color: colors.textMuted,
     cursor: 'pointer',
-    fontSize: '10px',
-    fontWeight: 600,
-    letterSpacing: '0.3px',
     textAlign: 'left' as const,
-    transition: 'background-color 150ms ease',
   },
-  sectionTitle: {
-    fontSize: '10px',
-    fontWeight: 600,
-    letterSpacing: '0.3px',
+  sectionChevron: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    color: colors.textMuted,
+  },
+  sectionIcon: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    color: colors.textMuted,
+  },
+  sectionLabel: {
+    fontSize: '12px',
+    fontWeight: 500,
+    color: colors.textSecondary,
+  },
+  sectionCount: {
+    marginLeft: 'auto',
+    fontSize: '11px',
+    fontFamily: "'JetBrains Mono', monospace",
+    color: colors.textMuted,
   },
   sectionContent: {
-    paddingLeft: '4px',
+    marginTop: '4px',
+    marginLeft: '22px',
+    paddingLeft: '12px',
+    borderLeft: `1px solid ${colors.borderSubtle}`,
   },
   itemRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    gap: '10px',
     width: '100%',
-    padding: '5px 8px 5px 12px',
+    padding: '8px 10px',
     border: 'none',
     borderRadius: '4px',
     backgroundColor: 'transparent',
@@ -379,8 +464,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     fontSize: '12px',
     textAlign: 'left' as const,
-    transition: 'background-color 150ms ease',
-    overflow: 'hidden',
+    transition: 'background-color 100ms ease',
   },
   itemLabel: {
     flex: 1,
@@ -389,13 +473,13 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: 'nowrap' as const,
     fontSize: '12px',
   },
-  itemSublabel: {
+  itemMeta: {
     fontSize: '10px',
     color: colors.textMuted,
-    flexShrink: 0,
+    fontFamily: "'JetBrains Mono', monospace",
   },
   emptyRow: {
-    padding: '8px 12px',
+    padding: '10px',
     fontSize: '11px',
     color: colors.textMuted,
     fontStyle: 'italic',
@@ -403,29 +487,30 @@ const styles: Record<string, React.CSSProperties> = {
   loadingRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
-    padding: '8px 12px',
+    gap: '8px',
+    padding: '10px',
     fontSize: '11px',
     color: colors.textMuted,
   },
   footer: {
-    padding: '8px',
+    padding: '12px 14px 16px',
     borderTop: `1px solid ${colors.borderSubtle}`,
-    flexShrink: 0,
   },
   addButton: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '6px',
+    gap: '8px',
     width: '100%',
-    padding: '8px',
-    border: `1px dashed ${colors.borderSubtle}`,
-    borderRadius: '6px',
-    backgroundColor: 'transparent',
-    color: colors.textSecondary,
+    padding: '11px 16px',
+    border: 'none',
+    borderRadius: '8px',
+    backgroundColor: colors.accent,
+    color: '#000',
     cursor: 'pointer',
-    fontSize: '12px',
-    transition: 'all 150ms ease',
+    fontSize: '13px',
+    fontWeight: 600,
+    letterSpacing: '-0.01em',
+    transition: 'opacity 150ms ease',
   },
 };

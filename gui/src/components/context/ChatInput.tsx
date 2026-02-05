@@ -1,11 +1,12 @@
 /**
- * ChatInput - Textarea with send button for the context chat
+ * ChatInput - Terminal-style prompt input for context chat
  *
- * Enter sends, Shift+Enter newline. Disabled when streaming.
+ * Features a command-line aesthetic with prompt character.
+ * Enter sends, Shift+Enter for newline.
  */
 
 import { useState, useRef, useCallback } from 'react';
-import { Send, Square } from 'lucide-react';
+import { CornerDownLeft, Square } from 'lucide-react';
 import { colors } from '../../styles/theme';
 
 interface ChatInputProps {
@@ -21,7 +22,7 @@ export function ChatInput({
   onAbort,
   isStreaming,
   disabled = false,
-  placeholder = 'Ask about your context...',
+  placeholder = 'ask about your context...',
 }: ChatInputProps) {
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -48,43 +49,48 @@ export function ChatInput({
     // Auto-resize
     const el = e.target;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    el.style.height = Math.min(el.scrollHeight, 100) + 'px';
   };
 
   return (
     <div style={styles.container}>
-      <textarea
-        ref={textareaRef}
-        value={text}
-        onChange={handleInput}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        disabled={disabled}
-        rows={1}
-        style={{
-          ...styles.textarea,
-          opacity: disabled ? 0.5 : 1,
-        }}
-      />
+      <div style={styles.inputWrapper}>
+        <span style={styles.prompt}>{'>'}</span>
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={handleInput}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          disabled={disabled}
+          rows={1}
+          style={{
+            ...styles.textarea,
+            opacity: disabled ? 0.4 : 1,
+          }}
+        />
+      </div>
       {isStreaming ? (
         <button
-          style={{ ...styles.sendButton, backgroundColor: colors.danger }}
+          style={styles.stopButton}
           onClick={onAbort}
-          title="Stop"
+          title="Stop (Esc)"
         >
-          <Square size={14} fill="currentColor" />
+          <Square size={10} fill="currentColor" />
+          <span>stop</span>
         </button>
       ) : (
         <button
           style={{
             ...styles.sendButton,
             opacity: text.trim() && !disabled ? 1 : 0.3,
+            pointerEvents: text.trim() && !disabled ? 'auto' : 'none',
           }}
           onClick={handleSend}
           disabled={!text.trim() || disabled}
           title="Send (Enter)"
         >
-          <Send size={14} />
+          <CornerDownLeft size={12} />
         </button>
       )}
     </div>
@@ -95,36 +101,72 @@ const styles: Record<string, React.CSSProperties> = {
   container: {
     display: 'flex',
     alignItems: 'flex-end',
+    gap: '10px',
+  },
+  inputWrapper: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'flex-start',
     gap: '8px',
-    padding: '0',
+    padding: '10px 14px',
+    backgroundColor: colors.bgSecondary,
+    border: `1px solid ${colors.borderSubtle}`,
+    borderRadius: '6px',
+    transition: 'border-color 150ms ease',
+  },
+  prompt: {
+    color: colors.accent,
+    fontSize: '12px',
+    fontFamily: "'JetBrains Mono', monospace",
+    fontWeight: 600,
+    lineHeight: '20px',
+    flexShrink: 0,
+    userSelect: 'none',
   },
   textarea: {
     flex: 1,
-    padding: '10px 14px',
-    fontSize: '14px',
-    fontFamily: 'inherit',
-    backgroundColor: colors.bgInput,
-    border: `1px solid ${colors.borderSubtle}`,
-    borderRadius: '8px',
+    padding: 0,
+    fontSize: '12px',
+    fontFamily: "'JetBrains Mono', monospace",
+    backgroundColor: 'transparent',
+    border: 'none',
     color: colors.textPrimary,
     outline: 'none',
     resize: 'none' as const,
-    lineHeight: 1.5,
-    maxHeight: '120px',
-    transition: 'border-color 200ms ease',
+    lineHeight: '20px',
+    maxHeight: '100px',
+    letterSpacing: '-0.02em',
   },
   sendButton: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    width: 36,
-    height: 36,
-    border: 'none',
-    borderRadius: '8px',
-    backgroundColor: colors.accent,
-    color: '#fff',
+    width: 32,
+    height: 32,
+    border: `1px solid ${colors.borderSubtle}`,
+    borderRadius: '6px',
+    backgroundColor: colors.bgSecondary,
+    color: colors.textMuted,
     cursor: 'pointer',
     flexShrink: 0,
-    transition: 'opacity 150ms ease, background-color 150ms ease',
+    transition: 'all 150ms ease',
+  },
+  stopButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '5px',
+    height: 32,
+    padding: '0 12px',
+    border: `1px solid rgba(239, 68, 68, 0.3)`,
+    borderRadius: '6px',
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    color: colors.danger,
+    cursor: 'pointer',
+    flexShrink: 0,
+    fontSize: '10px',
+    fontFamily: "'JetBrains Mono', monospace",
+    fontWeight: 500,
+    transition: 'all 150ms ease',
   },
 };

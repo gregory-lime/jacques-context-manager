@@ -14,7 +14,7 @@ The system uses a three-layer architecture:
 2. **Server** (Node.js/TypeScript) → manages sessions and broadcasts updates via WebSocket
 3. **Dashboard** (Ink/React) → displays real-time context usage
 
-**Current Status**: Phases 1-4, 6-7, 9-10, 11 complete. Phase 5 (context breakdown) pending.
+**Current Status**: Phases 1-4, 6-7, 9-12 complete. Phase 5 (context breakdown) pending.
 
 ## Key Commands
 
@@ -426,6 +426,12 @@ jacques-context-manager/
 │   ├── session/         # Session parsing and transformation
 │   ├── storage/         # File I/O utilities
 │   └── templates/       # Skill templates
+├── gui/src/             # Web GUI (React + Vite)
+│   ├── components/      # React components
+│   │   └── context/     # Context Catalog GUI components
+│   ├── hooks/           # Custom React hooks
+│   ├── pages/           # Route pages
+│   └── styles/          # Theme and styling
 ├── server/src/mcp/      # MCP server for archive search
 ├── hooks/               # Claude Code/Cursor hooks (Python/Bash)
 ├── scripts/             # Setup and configuration scripts
@@ -516,6 +522,16 @@ jacques-context-manager/
 - **Handoff integration**: Includes plan context in session handoffs
 - **Module**: `core/src/archive/plan-extractor.ts` (433 lines)
 - **37/37 unit tests**: Full coverage for detection, extraction, deduplication, and indexing
+
+**Phase 12**: Context Catalog GUI ✅
+- **Web interface**: React + Vite GUI accessible at `http://localhost:4243`
+- **Three-panel layout**: Sidebar (240px collapsible) + Catalog Panel (240px collapsible) + Chat Panel (flex)
+- **Context catalog**: Browse and manage context files, plans, and sessions per project
+- **Chat assistant**: Claude CLI integration for context-aware conversations via WebSocket
+- **Terminal aesthetic**: Monochrome design with coral accent (#E67E52), JetBrains Mono font
+- **Responsive**: Auto-collapse catalog at <800px content width
+- **Backend**: CRUD endpoints for context files, ChatService for Claude CLI process management
+- **Components**: `gui/src/components/context/` (CatalogPanel, ChatPanel, ChatInput, ChatMessage, SuggestionChips)
 
 ### Pending Phases
 
