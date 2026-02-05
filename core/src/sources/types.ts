@@ -18,6 +18,8 @@ export interface OAuthTokens {
  */
 export interface JacquesConfig {
   version: string;
+  /** Path to Claude's .claude directory (defaults to ~/.claude) */
+  rootPath?: string;
   sources: {
     obsidian?: ObsidianSourceConfig;
     googleDocs?: GoogleDocsSourceConfig;

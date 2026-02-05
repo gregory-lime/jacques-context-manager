@@ -11,3 +11,5 @@ export { ContentModal, useContentModal } from './ContentModal';
 export { WindowBar } from './WindowBar';
 export { NotificationCenter } from './NotificationCenter';
 export type { ContentModalConfig } from './ContentModal';
+export { ToggleSwitch } from './ToggleSwitch';
+export { SettingsSection } from './SettingsSection';
