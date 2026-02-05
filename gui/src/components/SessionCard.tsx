@@ -22,6 +22,13 @@ const PLAN_TITLE_PATTERNS = [
 
 function formatSessionTitle(rawTitle: string | null): { isPlan: boolean; displayTitle: string } {
   if (!rawTitle) return { isPlan: false, displayTitle: 'Untitled' };
+
+  // Skip internal Claude Code command messages
+  const trimmed = rawTitle.trim();
+  if (trimmed.startsWith('<local-command') || trimmed.startsWith('<command-')) {
+    return { isPlan: false, displayTitle: 'Active Session' };
+  }
+
   for (const pattern of PLAN_TITLE_PATTERNS) {
     if (pattern.test(rawTitle)) {
       const cleaned = rawTitle.replace(pattern, '').trim();
@@ -277,9 +284,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 500,
     color: colors.textPrimary,
     overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap' as const,
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical' as const,
     lineHeight: 1.3,
+    flex: 1,
   },
 
   // Git info

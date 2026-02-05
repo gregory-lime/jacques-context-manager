@@ -126,8 +126,31 @@ Tracks task completion within sessions for plan progress display.
 
 ## Cache Module (`core/src/cache/`)
 
-Lightweight session indexing — reads Claude Code's native `sessions-index.json` with fallback to direct JSONL scanning.
+Lightweight session indexing for fast startup and GUI loading. Uses a **two-phase catalog-first strategy**:
 
-- `session-index.ts` — `readSessionIndex()`, `buildSessionIndex()`, `detectModeAndPlans()`
+1. **Fast path**: Read `.jacques/index.json` (pre-extracted catalog metadata)
+2. **Slow path**: Parse JSONL only for uncataloged/stale sessions
+
+**Key functions:**
+- `getSessionIndex(options)` — Get all sessions with caching (default 5-min freshness)
+- `buildSessionIndex()` — Rebuild index from all projects
+- `getSessionEntry(id)` — Single session lookup by ID
+- `getSessionsByProject()` — Group sessions by git repo root
+- `detectModeAndPlans(entries)` — Detect planning vs execution mode
+
+**SessionEntry contains:**
+- `id`, `title`, `startedAt`, `endedAt`
+- `gitBranch`, `gitWorktree`, `gitRepoRoot`
+- `tokens.input`, `tokens.output` (total usage)
+- `messageCount`, `toolCallCount`
+- `planCount`, `planRefs`, `subagentIds`
+- `mode` — 'planning' or 'execution'
+
+**Used by:**
+- `server/src/process-scanner.ts` — Startup session metadata (title, git, tokens)
+- Dashboard GUI — Session list and filtering
+- Plan progress display — Task extraction
+
+**Additional features:**
 - Filters out internal agents (auto-compact, prompt_suggestion) from counts
 - Sets `hadAutoCompact: true` flag when auto-compact agent detected

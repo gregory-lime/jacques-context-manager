@@ -14,7 +14,8 @@
     "./sources": "./dist/sources/index.js",
     "./storage": "./dist/storage/index.js",
     "./utils": "./dist/utils/index.js",
-    "./handoff": "./dist/handoff/index.js"
+    "./handoff": "./dist/handoff/index.js",
+    "./cache": "./dist/cache/index.js"
   },
   "scripts": {
     "build": "tsc",

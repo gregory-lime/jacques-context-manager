@@ -85,7 +85,7 @@ export function Layout() {
       <aside
         style={{
           ...styles.sidebar,
-          width: sidebarCollapsed ? '56px' : '240px',
+          width: sidebarCollapsed ? '56px' : '280px',
           transition: 'width 200ms ease',
         }}
         id="sidebar"

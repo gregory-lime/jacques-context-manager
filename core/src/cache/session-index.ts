@@ -198,7 +198,7 @@ export async function writeSessionIndex(index: SessionIndex): Promise<void> {
  * Extract session title from parsed JSONL entries.
  * Priority:
  *   1. Summary entry (Claude's auto-generated title)
- *   2. First user message (fallback)
+ *   2. First real user message (skips internal command messages)
  */
 function extractTitle(
   entries: Array<{ type: string; content: { summary?: string; text?: string } }>
@@ -209,13 +209,21 @@ function extractTitle(
     return summaryEntry.content.summary;
   }
 
-  // Fallback to first user message
+  // Fallback to first real user message (skip internal command messages)
   const userMessage = entries.find(
-    (e) => e.type === "user_message" && e.content.text
+    (e) => {
+      if (e.type !== "user_message" || !e.content.text) return false;
+      const text = e.content.text.trim();
+      // Skip internal Claude Code messages
+      if (text.startsWith("<local-command")) return false;
+      if (text.startsWith("<command-")) return false;
+      if (text.length === 0) return false;
+      return true;
+    }
   );
   if (userMessage?.content.text) {
     // Truncate long messages
-    const text = userMessage.content.text;
+    const text = userMessage.content.text.trim();
     if (text.length > 100) {
       return text.slice(0, 97) + "...";
     }

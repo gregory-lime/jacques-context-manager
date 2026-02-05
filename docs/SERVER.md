@@ -55,6 +55,13 @@ At startup, Jacques scans for running Claude Code sessions **before** hooks fire
 
 **Hook upgrade**: When hooks fire, `DISCOVERED:*` sessions upgrade to real terminal keys.
 
+**Metadata sources** (priority order):
+1. **Jacques session index** (`getSessionIndex()` from `@jacques/core/cache`) — Pre-extracted titles, git info, token stats from `.jacques/index.json`
+2. **Git detection** — Inline `git rev-parse` for uncataloged sessions
+3. **JSONL parsing** — Fallback for brand-new sessions not in catalog
+
+This ensures discovered sessions show accurate metadata immediately without expensive JSONL parsing.
+
 ## Session Registry
 
 In-memory session store indexed by `session_id`.

@@ -97,8 +97,8 @@ export class SessionRegistry {
       context_metrics: discovered.contextMetrics,
       autocompact: null, // Unknown until hooks fire
       git_branch: discovered.gitBranch,
-      git_worktree: null,
-      git_repo_root: null,
+      git_worktree: discovered.gitWorktree,
+      git_repo_root: discovered.gitRepoRoot,
     };
 
     this.sessions.set(discovered.sessionId, session);
@@ -112,7 +112,10 @@ export class SessionRegistry {
       ? `~${session.context_metrics.used_percentage.toFixed(1)}%`
       : 'unknown';
     const terminalInfo = discovered.terminalType || 'Unknown terminal';
-    this.log(`[Registry] Discovered session: ${discovered.sessionId} [${discovered.project}] - ${contextInfo} (${terminalInfo})`);
+    const gitInfo = session.git_branch
+      ? ` [${session.git_branch}${session.git_worktree ? `@${session.git_worktree}` : ''}]`
+      : '';
+    this.log(`[Registry] Discovered session: ${discovered.sessionId} [${discovered.project}]${gitInfo} - ${contextInfo} (${terminalInfo})`);
     this.log(`[Registry] Terminal key: ${session.terminal_key}`);
 
     return session;
@@ -353,21 +356,24 @@ export class SessionRegistry {
       this.log(`[Registry] Transcript path set: ${session.transcript_path}`);
     }
 
-    // Update git branch if provided (from statusLine hook)
-    if (event.git_branch !== undefined) {
+    // Update git branch if provided AND non-empty (from statusLine hook)
+    // Don't let empty strings overwrite existing good values
+    if (event.git_branch !== undefined && event.git_branch) {
       if (event.git_branch !== session.git_branch) {
         this.log(`[Registry] Git branch updated: "${session.git_branch}" -> "${event.git_branch}"`);
       }
-      session.git_branch = event.git_branch || null;
-      session.git_worktree = event.git_worktree || null;
+      session.git_branch = event.git_branch;
+    }
+    if (event.git_worktree !== undefined && event.git_worktree) {
+      session.git_worktree = event.git_worktree;
     }
 
-    // Update git_repo_root if provided (from statusLine hook)
-    if (event.git_repo_root !== undefined) {
+    // Update git_repo_root if provided AND non-empty (from statusLine hook)
+    if (event.git_repo_root !== undefined && event.git_repo_root) {
       if (event.git_repo_root !== session.git_repo_root) {
         this.log(`[Registry] Git repo root updated: "${session.git_repo_root}" -> "${event.git_repo_root}"`);
       }
-      session.git_repo_root = event.git_repo_root || null;
+      session.git_repo_root = event.git_repo_root;
     }
 
     if (isNewSession) {

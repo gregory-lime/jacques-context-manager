@@ -227,8 +227,16 @@ function extractFallbackTitle(entries: ParsedEntry[]): string {
     }
   }
 
-  // Strategy 2: Extract action from first user message
-  const firstUser = entries.find((e) => e.type === "user_message");
+  // Strategy 2: Extract action from first real user message (skip internal commands)
+  const firstUser = entries.find((e) => {
+    if (e.type !== "user_message" || !e.content.text) return false;
+    const text = e.content.text.trim();
+    // Skip internal Claude Code messages
+    if (text.startsWith("<local-command")) return false;
+    if (text.startsWith("<command-")) return false;
+    if (text.length === 0) return false;
+    return true;
+  });
   if (firstUser?.content.text) {
     const text = firstUser.content.text.trim();
 

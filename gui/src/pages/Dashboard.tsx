@@ -1171,6 +1171,7 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap' as const,
+    flex: 1,
   },
   listRowRight: {
     display: 'flex',

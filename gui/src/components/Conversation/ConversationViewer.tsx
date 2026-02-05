@@ -798,7 +798,7 @@ const styles: Record<string, React.CSSProperties> = {
   navigatorsPanel: {
     display: 'flex',
     flexDirection: 'column' as const,
-    width: '200px',
+    width: '260px',
     flexShrink: 0,
     backgroundColor: colors.bgSecondary,
     borderLeft: `1px solid ${colors.borderSubtle}`,

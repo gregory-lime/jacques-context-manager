@@ -165,7 +165,7 @@ export function SubagentNavigator({
 function getPromptPreview(prompt?: string): string {
   if (!prompt) return 'Agent task';
   const firstLine = prompt.split('\n')[0].trim();
-  return firstLine.length > 35 ? firstLine.slice(0, 32) + '...' : firstLine;
+  return firstLine.length > 50 ? firstLine.slice(0, 47) + '...' : firstLine;
 }
 
 const styles: Record<string, React.CSSProperties> = {

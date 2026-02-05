@@ -37,6 +37,10 @@ import {
   parseJSONLContent,
   getEntryStatistics,
 } from "@jacques/core/session";
+import {
+  getSessionIndex,
+  type SessionEntry,
+} from "@jacques/core/cache";
 import type { ContextMetrics } from "./types.js";
 
 const execAsync = promisify(exec);
@@ -69,6 +73,10 @@ export interface DetectedSession {
   transcriptPath: string;
   /** Git branch if detected */
   gitBranch: string | null;
+  /** Git worktree name (basename of worktree dir, only set for worktrees) */
+  gitWorktree: string | null;
+  /** Canonical git repo root path (main worktree root, shared across all worktrees) */
+  gitRepoRoot: string | null;
   /** Context metrics from parsing the transcript */
   contextMetrics: ContextMetrics | null;
   /** Last modification time of the transcript */
@@ -95,6 +103,8 @@ interface SessionFileInfo {
   sessionId: string;
   modifiedAt: Date;
   gitBranch: string | null;
+  gitWorktree: string | null;
+  gitRepoRoot: string | null;
   title: string | null;
   contextMetrics: ContextMetrics | null;
 }
@@ -295,10 +305,18 @@ async function getClaudeProcessesWindows(): Promise<DetectedProcess[]> {
 // ============================================================
 
 /**
- * Find all active session files for a given CWD
- * Returns sessions modified within ACTIVE_SESSION_THRESHOLD_MS
+ * Find all active session files for a given CWD.
+ * Uses catalog-first strategy: reads from Jacques session index when available,
+ * falls back to JSONL parsing for uncataloged sessions.
+ *
+ * @param cwd Working directory to find sessions for
+ * @param catalogMap Pre-loaded session catalog (sessionId -> SessionEntry)
+ * @returns Sessions modified within ACTIVE_SESSION_THRESHOLD_MS
  */
-async function findActiveSessionFiles(cwd: string): Promise<SessionFileInfo[]> {
+async function findActiveSessionFiles(
+  cwd: string,
+  catalogMap: Map<string, SessionEntry>
+): Promise<SessionFileInfo[]> {
   const claudeDir = path.join(os.homedir(), ".claude", "projects");
   const encodedPath = encodeProjectPath(cwd);
   const projectDir = path.join(claudeDir, encodedPath);
@@ -327,16 +345,68 @@ async function findActiveSessionFiles(cwd: string): Promise<SessionFileInfo[]> {
 
       // Check if file was modified within threshold (active session)
       if (now - mtime <= ACTIVE_SESSION_THRESHOLD_MS) {
-        const metadata = await extractSessionMetadata(filePath);
+        const sessionId = path.basename(filename, ".jsonl");
+
+        // Priority 1: Use existing Jacques catalog metadata
+        const catalogEntry = catalogMap.get(sessionId);
+        if (catalogEntry) {
+          // Calculate context metrics from catalog tokens
+          let contextMetrics: ContextMetrics | null = null;
+          if (catalogEntry.tokens && catalogEntry.tokens.input > 0) {
+            const contextWindowSize = 200000;
+            const usedPercentage = (catalogEntry.tokens.input / contextWindowSize) * 100;
+            contextMetrics = {
+              used_percentage: Math.min(usedPercentage, 100),
+              remaining_percentage: Math.max(100 - usedPercentage, 0),
+              context_window_size: contextWindowSize,
+              total_input_tokens: catalogEntry.tokens.input,
+              total_output_tokens: catalogEntry.tokens.output,
+              is_estimate: true,
+            };
+          }
+
+          // If catalog has no git info, try live detection
+          let gitBranch = catalogEntry.gitBranch || null;
+          let gitWorktree = catalogEntry.gitWorktree || null;
+          let gitRepoRoot = catalogEntry.gitRepoRoot || null;
+
+          if (!gitBranch) {
+            const gitInfo = await detectGitInfo(cwd);
+            gitBranch = gitInfo.branch;
+            gitWorktree = gitInfo.worktree;
+            gitRepoRoot = gitInfo.repoRoot;
+          }
+
+          activeSessions.push({
+            filePath,
+            sessionId,
+            modifiedAt: stats.mtime,
+            gitBranch,
+            gitWorktree,
+            gitRepoRoot,
+            title: catalogEntry.title,
+            contextMetrics,
+          });
+          continue;
+        }
+
+        // Priority 2: Fall back to JSONL parsing for uncataloged sessions
+        const metadata = await extractSessionMetadataFromJSONL(filePath);
 
         if (metadata.sessionId) {
+          // For uncataloged sessions, detect git info
+          const gitInfo = await detectGitInfo(cwd);
+
           activeSessions.push({
             filePath,
             sessionId: metadata.sessionId,
             modifiedAt: stats.mtime,
-            gitBranch: metadata.gitBranch,
+            gitBranch: metadata.gitBranch || gitInfo.branch,
+            gitWorktree: gitInfo.worktree,
+            gitRepoRoot: gitInfo.repoRoot,
             title: metadata.title,
-            contextMetrics: metadata.contextMetrics,
+            // Don't estimate context for discovered sessions - show null until hooks fire
+            contextMetrics: null,
           });
         }
       }
@@ -354,9 +424,16 @@ async function findActiveSessionFiles(cwd: string): Promise<SessionFileInfo[]> {
 }
 
 /**
- * Find the most recent session file for a CWD (fallback for inactive detection)
+ * Find the most recent session file for a CWD (fallback for inactive detection).
+ * Uses catalog-first strategy when available.
+ *
+ * @param cwd Working directory to find sessions for
+ * @param catalogMap Pre-loaded session catalog (sessionId -> SessionEntry)
  */
-async function findMostRecentSessionFile(cwd: string): Promise<SessionFileInfo | null> {
+async function findMostRecentSessionFile(
+  cwd: string,
+  catalogMap: Map<string, SessionEntry>
+): Promise<SessionFileInfo | null> {
   const claudeDir = path.join(os.homedir(), ".claude", "projects");
   const encodedPath = encodeProjectPath(cwd);
   const projectDir = path.join(claudeDir, encodedPath);
@@ -376,14 +453,14 @@ async function findMostRecentSessionFile(cwd: string): Promise<SessionFileInfo |
     }
 
     // Get stats and find most recent
-    let mostRecent: { filePath: string; mtime: Date } | null = null;
+    let mostRecent: { filePath: string; mtime: Date; filename: string } | null = null;
 
     for (const filename of jsonlFiles) {
       const filePath = path.join(projectDir, filename);
       const stats = await fs.stat(filePath);
 
       if (!mostRecent || stats.mtime > mostRecent.mtime) {
-        mostRecent = { filePath, mtime: stats.mtime };
+        mostRecent = { filePath, mtime: stats.mtime, filename };
       }
     }
 
@@ -391,22 +468,131 @@ async function findMostRecentSessionFile(cwd: string): Promise<SessionFileInfo |
       return null;
     }
 
-    const metadata = await extractSessionMetadata(mostRecent.filePath);
+    const sessionId = path.basename(mostRecent.filename, ".jsonl");
+
+    // Priority 1: Use existing Jacques catalog metadata
+    const catalogEntry = catalogMap.get(sessionId);
+    if (catalogEntry) {
+      // Calculate context metrics from catalog tokens
+      let contextMetrics: ContextMetrics | null = null;
+      if (catalogEntry.tokens && catalogEntry.tokens.input > 0) {
+        const contextWindowSize = 200000;
+        const usedPercentage = (catalogEntry.tokens.input / contextWindowSize) * 100;
+        contextMetrics = {
+          used_percentage: Math.min(usedPercentage, 100),
+          remaining_percentage: Math.max(100 - usedPercentage, 0),
+          context_window_size: contextWindowSize,
+          total_input_tokens: catalogEntry.tokens.input,
+          total_output_tokens: catalogEntry.tokens.output,
+          is_estimate: true,
+        };
+      }
+
+      // If catalog has no git info, try live detection
+      let gitBranch = catalogEntry.gitBranch || null;
+      let gitWorktree = catalogEntry.gitWorktree || null;
+      let gitRepoRoot = catalogEntry.gitRepoRoot || null;
+
+      if (!gitBranch) {
+        const gitInfo = await detectGitInfo(cwd);
+        gitBranch = gitInfo.branch;
+        gitWorktree = gitInfo.worktree;
+        gitRepoRoot = gitInfo.repoRoot;
+      }
+
+      return {
+        filePath: mostRecent.filePath,
+        sessionId,
+        modifiedAt: mostRecent.mtime,
+        gitBranch,
+        gitWorktree,
+        gitRepoRoot,
+        title: catalogEntry.title,
+        contextMetrics,
+      };
+    }
+
+    // Priority 2: Fall back to JSONL parsing for uncataloged sessions
+    const metadata = await extractSessionMetadataFromJSONL(mostRecent.filePath);
 
     if (!metadata.sessionId) {
       return null;
     }
 
+    // For uncataloged sessions, detect git info
+    const gitInfo = await detectGitInfo(cwd);
+
     return {
       filePath: mostRecent.filePath,
       sessionId: metadata.sessionId,
       modifiedAt: mostRecent.mtime,
-      gitBranch: metadata.gitBranch,
+      gitBranch: metadata.gitBranch || gitInfo.branch,
+      gitWorktree: gitInfo.worktree,
+      gitRepoRoot: gitInfo.repoRoot,
       title: metadata.title,
-      contextMetrics: metadata.contextMetrics,
+      // Don't estimate context for discovered sessions - show null until hooks fire
+      contextMetrics: null,
     };
   } catch {
     return null;
+  }
+}
+
+// ============================================================
+// Git Detection (inline version of hooks/git-detect.sh)
+// ============================================================
+
+/**
+ * Git info from detection
+ */
+interface GitInfo {
+  branch: string | null;
+  worktree: string | null;
+  repoRoot: string | null;
+}
+
+/**
+ * Detect git info for a directory: branch, worktree name, and repo root.
+ * Mimics the logic from hooks/git-detect.sh.
+ *
+ * @param cwd Directory to check for git
+ * @returns Git info with branch, worktree (if applicable), and repo root
+ */
+async function detectGitInfo(cwd: string): Promise<GitInfo> {
+  try {
+    const { stdout } = await execAsync(
+      `git -C "${cwd}" rev-parse --abbrev-ref HEAD --git-common-dir`,
+      { timeout: 2000 }
+    );
+
+    if (!stdout.trim()) {
+      return { branch: null, worktree: null, repoRoot: null };
+    }
+
+    const lines = stdout.trim().split("\n");
+    const branch = lines[0] || null;
+    const commonDir = lines[1];
+
+    if (!commonDir) {
+      return { branch, worktree: null, repoRoot: null };
+    }
+
+    let worktree: string | null = null;
+    let repoRoot: string | null = null;
+
+    if (commonDir === ".git") {
+      // Normal repo (not a worktree) - cwd is the repo root
+      repoRoot = cwd;
+    } else {
+      // Worktree - commonDir is absolute path to shared .git
+      repoRoot = path.dirname(commonDir);
+      worktree = path.basename(cwd);
+    }
+
+    return { branch, worktree, repoRoot };
+  } catch {
+    // Not a git repo or git not available
+    return { branch: null, worktree: null, repoRoot: null };
   }
 }
 
@@ -415,9 +601,9 @@ async function findMostRecentSessionFile(cwd: string): Promise<SessionFileInfo |
 // ============================================================
 
 /**
- * Extract session metadata from JSONL file
+ * Extract session metadata from JSONL file (fallback for uncataloged sessions)
  */
-async function extractSessionMetadata(
+async function extractSessionMetadataFromJSONL(
   filePath: string
 ): Promise<{
   sessionId: string | null;
@@ -448,13 +634,16 @@ async function extractSessionMetadata(
           gitBranch = entry.data.gitBranch;
         }
 
-        // Extract title from first user message
+        // Extract title from first real user message (skip internal commands)
         if (!title && entry.type === "user" && entry.message?.content) {
           const userContent =
             typeof entry.message.content === "string"
               ? entry.message.content
               : entry.message.content[0]?.text || "";
-          if (userContent) {
+          // Skip internal Claude Code messages
+          if (userContent &&
+              !userContent.trim().startsWith("<local-command") &&
+              !userContent.trim().startsWith("<command-")) {
             // Truncate to first line, max 60 chars
             title = userContent.split("\n")[0].slice(0, 60);
             if (userContent.length > 60) {
@@ -517,6 +706,15 @@ async function extractSessionMetadata(
  * Detects running Claude processes, matches them to session files,
  * and extracts metadata for registration.
  *
+ * ## Catalog-First Strategy
+ *
+ * Uses Jacques session index (from @jacques/core/cache) for pre-extracted metadata:
+ * - Session titles (from summary or first user message)
+ * - Git info (branch, worktree, repo root)
+ * - Token usage stats
+ *
+ * Falls back to JSONL parsing only for sessions not in the catalog.
+ *
  * ## Multi-Session Support
  *
  * When multiple Claude processes run in the same directory:
@@ -536,6 +734,16 @@ export async function scanForActiveSessions(): Promise<DetectedSession[]> {
     return [];
   }
 
+  // Load existing session metadata from Jacques catalog
+  // Use a short maxAge since we want fresh data but can tolerate recent cache
+  let catalogMap = new Map<string, SessionEntry>();
+  try {
+    const sessionIndex = await getSessionIndex({ maxAge: 5 * 60 * 1000 });
+    catalogMap = new Map(sessionIndex.sessions.map(s => [s.id, s]));
+  } catch {
+    // Catalog unavailable, will fall back to JSONL parsing for all sessions
+  }
+
   const sessions: DetectedSession[] = [];
   const processedSessionIds = new Set<string>();
 
@@ -549,12 +757,12 @@ export async function scanForActiveSessions(): Promise<DetectedSession[]> {
 
   // Process each unique CWD
   for (const [cwd, cwdProcesses] of processesByCwd) {
-    // Find all active session files for this CWD
-    let sessionFiles = await findActiveSessionFiles(cwd);
+    // Find all active session files for this CWD (uses catalog when available)
+    let sessionFiles = await findActiveSessionFiles(cwd, catalogMap);
 
     // If no active sessions found, fall back to most recent
     if (sessionFiles.length === 0) {
-      const mostRecent = await findMostRecentSessionFile(cwd);
+      const mostRecent = await findMostRecentSessionFile(cwd, catalogMap);
       if (mostRecent) {
         sessionFiles = [mostRecent];
       }
@@ -586,6 +794,8 @@ export async function scanForActiveSessions(): Promise<DetectedSession[]> {
         cwd,
         transcriptPath: sessionFile.filePath,
         gitBranch: sessionFile.gitBranch,
+        gitWorktree: sessionFile.gitWorktree,
+        gitRepoRoot: sessionFile.gitRepoRoot,
         contextMetrics: sessionFile.contextMetrics,
         lastActivity: sessionFile.modifiedAt.getTime(),
         title: sessionFile.title,
@@ -614,6 +824,8 @@ export async function scanForActiveSessions(): Promise<DetectedSession[]> {
         cwd,
         transcriptPath: sessionFile.filePath,
         gitBranch: sessionFile.gitBranch,
+        gitWorktree: sessionFile.gitWorktree,
+        gitRepoRoot: sessionFile.gitRepoRoot,
         contextMetrics: sessionFile.contextMetrics,
         lastActivity: sessionFile.modifiedAt.getTime(),
         title: sessionFile.title,
