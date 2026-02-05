@@ -24,7 +24,7 @@ export const PLAN_TRIGGER_PATTERNS = [
 const MIN_PLAN_LENGTH = 100;
 
 /** Minimum similarity score (0-1) for fuzzy deduplication */
-const MIN_SIMILARITY = 0.9;
+const MIN_SIMILARITY = 0.75;
 
 /**
  * Detected plan with metadata
@@ -41,6 +41,7 @@ export interface DetectedPlan {
  */
 export interface PlanFingerprint {
   contentHash: string;
+  bodyHash: string;
   titleNormalized: string;
   lengthRange: string;
 }
@@ -157,6 +158,46 @@ export function extractPlanTitle(content: string): string {
 }
 
 /**
+ * Extract plan body (content without the title heading).
+ * Strips the first markdown heading line and returns the rest.
+ */
+export function extractPlanBody(content: string): string {
+  const lines = content.split("\n");
+  let foundFirstHeading = false;
+  const bodyLines: string[] = [];
+
+  for (const line of lines) {
+    // Skip the first heading line
+    if (!foundFirstHeading && line.match(/^#\s+/)) {
+      foundFirstHeading = true;
+      continue;
+    }
+    bodyLines.push(line);
+  }
+
+  // If no heading found, return entire content
+  if (!foundFirstHeading) {
+    return content.trim();
+  }
+
+  return bodyLines.join("\n").trim();
+}
+
+/**
+ * Generate a hash of the plan body only (excludes title).
+ * Used for detecting duplicates with different titles but same content.
+ */
+export function generateBodyHash(content: string): string {
+  const body = extractPlanBody(content);
+  const normalized = body
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .trim();
+
+  return createHash("sha256").update(normalized).digest("hex");
+}
+
+/**
  * Generate a plan fingerprint for deduplication.
  * Normalizes content to ignore whitespace differences.
  */
@@ -167,10 +208,13 @@ export function generatePlanFingerprint(content: string): PlanFingerprint {
     .toLowerCase()
     .trim();
 
-  // Generate hash
+  // Generate full content hash
   const contentHash = createHash("sha256")
     .update(normalized)
     .digest("hex");
+
+  // Generate body-only hash (for cross-title dedup)
+  const bodyHash = generateBodyHash(content);
 
   // Extract and normalize title
   const title = extractPlanTitle(content);
@@ -192,6 +236,7 @@ export function generatePlanFingerprint(content: string): PlanFingerprint {
 
   return {
     contentHash,
+    bodyHash,
     titleNormalized,
     lengthRange,
   };
@@ -228,6 +273,11 @@ export function calculateSimilarity(text1: string, text2: string): number {
 
 /**
  * Find a duplicate plan in the existing catalog.
+ * Uses a two-tier approach:
+ * 1. Exact contentHash match (full content identical)
+ * 2. Exact bodyHash match (same body, different title)
+ * 3. Fuzzy similarity >= 75% within same length range (no title gate)
+ *
  * Returns the PlanEntry if found, null otherwise.
  */
 export async function findDuplicatePlan(
@@ -237,6 +287,20 @@ export async function findDuplicatePlan(
   const fingerprint = generatePlanFingerprint(content);
   const index = await readProjectIndex(projectPath);
 
+  // First pass: check indexed hashes (fast path)
+  for (const planEntry of index.plans) {
+    // Tier 1: Exact content hash match from index
+    if (planEntry.contentHash === fingerprint.contentHash) {
+      return planEntry;
+    }
+
+    // Tier 2: Body hash match from index (same body, different title)
+    if (planEntry.bodyHash === fingerprint.bodyHash) {
+      return planEntry;
+    }
+  }
+
+  // Second pass: read files and check computed hashes + similarity
   for (const planEntry of index.plans) {
     try {
       // Read the plan file - construct absolute path from relative path in index
@@ -244,16 +308,18 @@ export async function findDuplicatePlan(
       const planContent = await fs.readFile(absolutePath, "utf-8");
       const existingFingerprint = generatePlanFingerprint(planContent);
 
-      // Exact hash match
+      // Tier 1: Exact content hash match (computed)
       if (fingerprint.contentHash === existingFingerprint.contentHash) {
         return planEntry;
       }
 
-      // Fuzzy match: same title + length range + high similarity
-      if (
-        fingerprint.titleNormalized === existingFingerprint.titleNormalized &&
-        fingerprint.lengthRange === existingFingerprint.lengthRange
-      ) {
+      // Tier 2: Body hash match (computed) - catches different titles, same body
+      if (fingerprint.bodyHash === existingFingerprint.bodyHash) {
+        return planEntry;
+      }
+
+      // Tier 3: Fuzzy similarity within same length range (no title gate!)
+      if (fingerprint.lengthRange === existingFingerprint.lengthRange) {
         const similarity = calculateSimilarity(content, planContent);
         if (similarity >= MIN_SIMILARITY) {
           return planEntry;
