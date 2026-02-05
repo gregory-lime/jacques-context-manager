@@ -17,6 +17,7 @@ import { BroadcastService } from './services/broadcast-service.js';
 import { NotificationService } from './services/notification-service.js';
 import { HandoffWatcher } from './watchers/handoff-watcher.js';
 import { EventHandler } from './handlers/event-handler.js';
+import { scanForActiveSessions } from './process-scanner.js';
 import type {
   ClientMessage,
   AutoCompactToggledMessage,
@@ -451,6 +452,23 @@ export async function startEmbeddedServer(
       logger.log(`WebSocket:   ws://localhost:${wsPort}`);
       logger.log(`HTTP API:    http://localhost:${httpPort}`);
       logger.log('');
+    }
+
+    // Scan for existing Claude sessions at startup
+    try {
+      logger.log('Scanning for running Claude Code sessions...');
+      const discovered = await scanForActiveSessions();
+      for (const session of discovered) {
+        const registered = registry.registerDiscoveredSession(session);
+        broadcastService.broadcastSessionWithFocus(registered);
+      }
+      if (discovered.length > 0) {
+        logger.log(`Found ${discovered.length} active session(s)`);
+      } else {
+        logger.log('No active sessions found');
+      }
+    } catch (err) {
+      logger.warn(`Session scan failed: ${err}`);
     }
   } catch (err) {
     const nodeErr = err as NodeJS.ErrnoException;

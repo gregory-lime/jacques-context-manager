@@ -14,6 +14,8 @@ The system uses a three-layer architecture:
 2. **Server** (Node.js/TypeScript) → manages sessions and broadcasts updates via WebSocket
 3. **Dashboard** (Ink/React) → displays real-time context usage
 
+**Platform Support**: macOS, Linux, Windows. See `docs/PLATFORM-SUPPORT.md` for terminal compatibility.
+
 **Current Status**: Phases 1-4, 6-12 complete. Phase 5 (context breakdown) pending.
 
 ## Key Commands
@@ -137,6 +139,7 @@ Before exploring source code, read the relevant `docs/` file listed below. The d
 | Work on plans/dedup | `docs/CORE.md` (Plan Identity section) | `core/src/catalog/extractor.ts`, `core/src/archive/plan-cataloger.ts` |
 | Work on archive/search | `docs/CORE.md` (Archive Module section) | `core/src/archive/` |
 | Debug unexpected behavior | `docs/PITFALLS.md` | Relevant source files |
+| Work on process/terminal detection | `docs/PLATFORM-SUPPORT.md` | `server/src/process-scanner.ts` |
 | Build and test everything | Use commands in Key Commands above | `cd core && npx tsc && cd ../server && npx tsc && cd ../dashboard && npx tsc` |
 | Re-extract all catalogs | Start server, then `curl -X POST http://localhost:4243/api/catalog/extract -H 'Content-Type: application/json' -d '{"force": true}'` | Or use dashboard Settings → Re-extract All |
 
@@ -153,5 +156,6 @@ Architecture docs by component (read when working on that component):
 Reference docs (read when working on specific problems):
 
 - `docs/JSONL-FORMAT.md` — Claude Code JSONL entry types, structures, token data
+- `docs/PLATFORM-SUPPORT.md` — Cross-platform support: macOS, Linux, Windows; terminal detection
 - `docs/PHASES.md` — Development phase history and progress tracking
 - `docs/PITFALLS.md` — Common pitfalls, known bugs, and lessons learned

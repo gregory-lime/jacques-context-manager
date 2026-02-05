@@ -14,7 +14,7 @@ export {
 } from "./detector.js";
 export type { SessionFile, DetectorOptions, SubagentFile } from "./detector.js";
 
-export { parseJSONL, categorizeEntry, getEntryStatistics } from "./parser.js";
+export { parseJSONL, parseJSONLContent, categorizeEntry, getEntryStatistics } from "./parser.js";
 export type {
   ParsedEntry,
   ParsedEntryType,

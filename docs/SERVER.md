@@ -15,6 +15,7 @@ Real-time session tracking, event processing, and REST/WebSocket API. Depends on
 | `start-server.ts` | Embeddable entry point (used by dashboard) |
 | `types.ts` | Server-specific types (events, messages) |
 | `session-registry.ts` | In-memory session state management |
+| `process-scanner.ts` | Cross-platform startup session detection |
 | `unix-socket.ts` | Listen on `/tmp/jacques.sock` for hook events |
 | `websocket.ts` | Broadcast session updates to clients |
 | `http-api.ts` | REST API on port 4243 |
@@ -37,11 +38,29 @@ UnixSocketServer → EventHandler → SessionRegistry
 
 **Event types**: SessionStart, PostToolUse, ContextUpdate, Stop, SessionEnd
 
+## Startup Session Detection
+
+At startup, Jacques scans for running Claude Code sessions **before** hooks fire. This provides immediate visibility into active sessions.
+
+**Process** (in `start-server.ts`):
+1. `scanForActiveSessions()` enumerates running `claude` processes
+2. Maps each process CWD to `~/.claude/projects/{encoded-path}/`
+3. Finds active JSONL files (modified < 60s) or most recent
+4. Registers sessions with `DISCOVERED:*` terminal key prefix
+5. Broadcasts to connected clients
+
+**Platform support**: macOS, Linux, Windows. See `docs/PLATFORM-SUPPORT.md` for details.
+
+**Multi-session same-directory**: Detects ALL active sessions, not just one per directory.
+
+**Hook upgrade**: When hooks fire, `DISCOVERED:*` sessions upgrade to real terminal keys.
+
 ## Session Registry
 
 In-memory session store indexed by `session_id`.
 
 - **Auto-registration**: If `context_update` arrives before `session_start`, auto-creates the session
+- **Discovery registration**: Sessions detected at startup via process scanning
 - **Auto-focus**: Most recently active session gets focus
 - **Terminal identity**: `terminal_key` combines TTY, iTerm session ID, terminal PID
 - **Auto-compact tracking**: Reads `~/.claude/settings.json` for autoCompact settings
