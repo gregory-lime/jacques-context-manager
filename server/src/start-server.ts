@@ -28,7 +28,11 @@ import type {
   FocusTerminalResultMessage,
   UpdateNotificationSettingsRequest,
   NotificationSettingsMessage,
+  ChatSendRequest,
+  ChatAbortRequest,
+  CatalogUpdatedMessage,
 } from './types.js';
+import { ChatService } from './services/chat-service.js';
 import { WebSocket } from 'ws';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
@@ -117,6 +121,19 @@ export async function startEmbeddedServer(
     logger,
   });
 
+  // Create chat service
+  const chatService = new ChatService({
+    logger,
+    onCatalogChange: (projectPath: string) => {
+      const msg: CatalogUpdatedMessage = {
+        type: 'catalog_updated',
+        projectPath,
+        action: 'refresh',
+      };
+      wsServer.broadcast(msg);
+    },
+  });
+
   // Create event handler
   const eventHandler = new EventHandler({
     registry,
@@ -180,6 +197,18 @@ export async function startEmbeddedServer(
       case 'update_notification_settings':
         handleUpdateNotificationSettings(ws, message as UpdateNotificationSettingsRequest);
         break;
+
+      case 'chat_send': {
+        const chatMsg = message as ChatSendRequest;
+        chatService.send(ws, chatMsg.projectPath, chatMsg.message);
+        break;
+      }
+
+      case 'chat_abort': {
+        const abortMsg = message as ChatAbortRequest;
+        chatService.abort(abortMsg.projectPath);
+        break;
+      }
 
       default:
         logger.error(`Unknown client message type: ${(message as ClientMessage).type}`);
@@ -479,6 +508,7 @@ export async function startEmbeddedServer(
 
         registry.stopCleanup();
         handoffWatcher.stopAll();
+        chatService.killAll();
 
         // Remove log listener
         removeLogListener();

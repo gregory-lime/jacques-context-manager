@@ -33,6 +33,12 @@ export {
   // Plan Catalog API
   getProjectPlanCatalog,
   getPlanCatalogContent,
+  // Context Catalog API
+  getProjectCatalog,
+  getContextFileContent,
+  addContextNote,
+  updateContextContent,
+  deleteContextFile,
 } from './config';
 
 export type {

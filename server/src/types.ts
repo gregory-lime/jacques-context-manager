@@ -527,6 +527,76 @@ export interface ApiLogMessage {
   timestamp: number;
 }
 
+// ============================================================
+// Chat Messages (WebSocket: Client ↔ Server)
+// ============================================================
+
+/**
+ * Client sends a chat message
+ */
+export interface ChatSendRequest {
+  type: 'chat_send';
+  projectPath: string;
+  message: string;
+}
+
+/**
+ * Client requests abort of active chat
+ */
+export interface ChatAbortRequest {
+  type: 'chat_abort';
+  projectPath: string;
+}
+
+/**
+ * Server streams a text delta back
+ */
+export interface ChatDeltaMessage {
+  type: 'chat_delta';
+  projectPath: string;
+  text: string;
+}
+
+/**
+ * Server notifies about a tool being used
+ */
+export interface ChatToolEventMessage {
+  type: 'chat_tool_event';
+  projectPath: string;
+  toolName: string;
+}
+
+/**
+ * Server signals chat completion
+ */
+export interface ChatCompleteMessage {
+  type: 'chat_complete';
+  projectPath: string;
+  fullText: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+/**
+ * Server signals a chat error
+ */
+export interface ChatErrorMessage {
+  type: 'chat_error';
+  projectPath: string;
+  reason: 'aborted' | 'timeout' | 'process_error' | 'spawn_failed' | 'already_active';
+  message: string;
+}
+
+/**
+ * Server notifies that project catalog was updated
+ */
+export interface CatalogUpdatedMessage {
+  type: 'catalog_updated';
+  projectPath: string;
+  action: 'add' | 'update' | 'delete' | 'refresh';
+  itemId?: string;
+}
+
 /**
  * Union type for all server → client messages
  */
@@ -546,7 +616,12 @@ export type ServerMessage =
   | ApiLogMessage
   | FocusTerminalResultMessage
   | NotificationSettingsMessage
-  | NotificationFiredMessage;
+  | NotificationFiredMessage
+  | ChatDeltaMessage
+  | ChatToolEventMessage
+  | ChatCompleteMessage
+  | ChatErrorMessage
+  | CatalogUpdatedMessage;
 
 /**
  * Client request to select a session
@@ -599,7 +674,9 @@ export type ClientMessage =
   | ToggleAutoCompactRequest
   | GetHandoffContextRequest
   | FocusTerminalRequest
-  | UpdateNotificationSettingsRequest;
+  | UpdateNotificationSettingsRequest
+  | ChatSendRequest
+  | ChatAbortRequest;
 
 // ============================================================
 // Configuration

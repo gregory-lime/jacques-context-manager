@@ -16,6 +16,7 @@ import type {
   FocusChangedMessage,
   ClaudeOperationMessage,
   ApiLogMessage,
+  CatalogUpdatedMessage,
 } from './types.js';
 import type { ClaudeOperation } from '@jacques/core';
 import type { Logger } from './logging/logger-factory.js';
@@ -228,6 +229,19 @@ export class JacquesWebSocketServer {
         userPromptPreview: operation.userPromptPreview,
         systemPromptPreview: operation.systemPromptPreview,
       },
+    };
+    this.broadcast(message);
+  }
+
+  /**
+   * Broadcast catalog update notification
+   */
+  broadcastCatalogUpdate(projectPath: string, action: CatalogUpdatedMessage['action'], itemId?: string): void {
+    const message: CatalogUpdatedMessage = {
+      type: 'catalog_updated',
+      projectPath,
+      action,
+      itemId,
     };
     this.broadcast(message);
   }
