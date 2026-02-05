@@ -69,8 +69,8 @@ async function generateVersionedFilename(
  * Catalog a plan in the project index.
  *
  * Takes plan content and ensures it exists in .jacques/index.json:
- * 1. Normalize content → SHA-256 hash
- * 2. Check for existing entry with same contentHash
+ * 1. Normalize content → SHA-256 hash (full content + body only)
+ * 2. Check for existing entry with same contentHash or bodyHash
  * 3. If exists: merge sessionId into sessions[], return existing entry
  * 4. If new: write .md file, add to index, return new entry
  */
@@ -84,28 +84,48 @@ export async function catalogPlan(
 
   // Check for existing plan with same content hash in index
   const index = await readProjectIndex(projectPath);
-  const existingByHash = index.plans.find(
+  const existingByContentHash = index.plans.find(
     (p) => p.contentHash === fingerprint.contentHash
   );
 
-  if (existingByHash) {
-    // Content-hash match: merge session, update timestamp
+  if (existingByContentHash) {
+    // Content-hash match: merge session, update timestamp, backfill bodyHash if missing
     const updatedPlan: PlanEntry = {
-      ...existingByHash,
+      ...existingByContentHash,
+      bodyHash: existingByContentHash.bodyHash || fingerprint.bodyHash,
       updatedAt: now,
-      sessions: [...new Set([...existingByHash.sessions, sessionId])],
+      sessions: [...new Set([...existingByContentHash.sessions, sessionId])],
     };
     await addPlanToIndex(projectPath, updatedPlan);
     return updatedPlan;
   }
 
-  // Also check fuzzy duplicate (same title + high similarity)
+  // Check for existing plan with same body hash (different title, same body)
+  const existingByBodyHash = index.plans.find(
+    (p) => p.bodyHash === fingerprint.bodyHash
+  );
+
+  if (existingByBodyHash) {
+    // Body-hash match: merge session, update hashes, update timestamp
+    const updatedPlan: PlanEntry = {
+      ...existingByBodyHash,
+      contentHash: existingByBodyHash.contentHash || fingerprint.contentHash,
+      bodyHash: fingerprint.bodyHash,
+      updatedAt: now,
+      sessions: [...new Set([...existingByBodyHash.sessions, sessionId])],
+    };
+    await addPlanToIndex(projectPath, updatedPlan);
+    return updatedPlan;
+  }
+
+  // Also check fuzzy duplicate (high similarity, no title gate)
   const duplicate = await findDuplicatePlan(content, projectPath);
   if (duplicate) {
-    // Fuzzy match: merge session, add hash, update timestamp
+    // Fuzzy match: merge session, add hashes, update timestamp
     const updatedPlan: PlanEntry = {
       ...duplicate,
-      contentHash: fingerprint.contentHash,
+      contentHash: duplicate.contentHash || fingerprint.contentHash,
+      bodyHash: duplicate.bodyHash || fingerprint.bodyHash,
       updatedAt: now,
       sessions: [...new Set([...duplicate.sessions, sessionId])],
     };
@@ -132,13 +152,14 @@ export async function catalogPlan(
   const planPath = join(plansDir, filename);
   await fs.writeFile(planPath, content, "utf-8");
 
-  // Create and save the catalog entry
+  // Create and save the catalog entry with both hashes
   const planEntry: PlanEntry = {
     id: filename.replace(".md", ""),
     title,
     filename,
     path: `plans/${filename}`,
     contentHash: fingerprint.contentHash,
+    bodyHash: fingerprint.bodyHash,
     createdAt: now,
     updatedAt: now,
     sessions: [sessionId],
