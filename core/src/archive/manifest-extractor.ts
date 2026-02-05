@@ -12,6 +12,7 @@ import type { ParsedEntry } from "../session/parser.js";
 import { parseJSONL } from "../session/parser.js";
 import type { ConversationManifest, PlanReference } from "./types.js";
 import { extractEmbeddedPlans } from "./plan-extractor.js";
+import { catalogPlan } from "./plan-cataloger.js";
 
 /** Max chars for truncated user questions */
 const MAX_QUESTION_LENGTH = 200;
@@ -158,18 +159,30 @@ export async function extractManifestFromEntries(
   // Extract technologies
   const technologies = extractTechnologies(entries, filesModified);
 
-  // Detect plans from Write tool calls
-  const writePlans = detectPlans(entries);
+  // Detect plans from Write tool calls and catalog them
+  const writePlanPaths = detectWrittenPlanPaths(entries);
+  const writePlans = await catalogWrittenPlans(
+    writePlanPaths,
+    projectPath,
+    sessionId
+  );
 
-  // Detect embedded plans from user messages
+  // Detect transient plans (created by plan mode, stored in ~/.claude/plans/)
+  const transientPlans = await catalogTransientPlans(
+    entries,
+    projectPath,
+    sessionId
+  );
+
+  // Detect embedded plans from user messages (already catalogs them)
   const embeddedPlans = await extractEmbeddedPlans(
     entries,
     projectPath,
     sessionId
   );
 
-  // Combine both sources
-  const plans = [...writePlans, ...embeddedPlans];
+  // Combine all sources (dedup happens via cataloging)
+  const plans = [...writePlans, ...transientPlans, ...embeddedPlans];
 
   // Extract context snippets
   const contextSnippets = extractContextSnippets(entries);
@@ -366,9 +379,10 @@ function extractTechnologies(
 }
 
 /**
- * Detect plan files written in this conversation.
+ * Detect plan file paths written in this conversation.
+ * Returns paths to plan files that were written via the Write tool.
  */
-export function detectPlans(entries: ParsedEntry[]): PlanReference[] {
+export function detectWrittenPlanPaths(entries: ParsedEntry[]): string[] {
   const planPaths = new Set<string>();
   const plansDir = getPlansDirectory();
 
@@ -389,7 +403,121 @@ export function detectPlans(entries: ParsedEntry[]): PlanReference[] {
     }
   }
 
-  return Array.from(planPaths).map((p) => ({
+  return Array.from(planPaths);
+}
+
+/**
+ * Catalog written plans into the project index.
+ * Reads plan content and catalogs it using the standard cataloger (with dedup).
+ */
+async function catalogWrittenPlans(
+  planPaths: string[],
+  projectPath: string,
+  sessionId: string
+): Promise<PlanReference[]> {
+  const references: PlanReference[] = [];
+
+  for (const planPath of planPaths) {
+    try {
+      const content = await fs.readFile(planPath, "utf-8");
+
+      // Extract title from content
+      const titleMatch = content.match(/^#\s+(.+)$/m);
+      const title = titleMatch
+        ? titleMatch[1].trim().replace(/^Plan:\s*/i, "")
+        : path.basename(planPath, ".md");
+
+      // Catalog the plan (handles dedup automatically)
+      const planEntry = await catalogPlan(projectPath, {
+        title,
+        content,
+        sessionId,
+      });
+
+      // Return reference pointing to the cataloged plan
+      references.push({
+        path: path.join(projectPath, ".jacques", planEntry.path),
+        name: planEntry.filename,
+        archivedPath: planEntry.path,
+        source: "write" as const,
+      });
+    } catch (error) {
+      // Plan file doesn't exist or can't be read - still track it as reference
+      references.push({
+        path: planPath,
+        name: path.basename(planPath),
+        archivedPath: `plans/${path.basename(planPath)}`,
+        source: "write" as const,
+      });
+    }
+  }
+
+  return references;
+}
+
+/**
+ * Catalog transient plans created by Claude Code's plan mode.
+ * These are stored in ~/.claude/plans/ with the session's slug as filename.
+ */
+async function catalogTransientPlans(
+  entries: ParsedEntry[],
+  projectPath: string,
+  sessionId: string
+): Promise<PlanReference[]> {
+  const references: PlanReference[] = [];
+  const plansDir = getPlansDirectory();
+
+  // Find the session slug from entries (stored in "progress" type entries)
+  const slugs = new Set<string>();
+  for (const entry of entries) {
+    // The slug is stored in progress entries or can be found in the raw entry
+    const rawEntry = entry as { slug?: string };
+    if (rawEntry.slug) {
+      slugs.add(rawEntry.slug);
+    }
+  }
+
+  // Check each slug for a corresponding plan file
+  for (const slug of slugs) {
+    const planPath = path.join(plansDir, `${slug}.md`);
+
+    try {
+      const content = await fs.readFile(planPath, "utf-8");
+
+      // Extract title from content
+      const titleMatch = content.match(/^#\s+(.+)$/m);
+      const title = titleMatch
+        ? titleMatch[1].trim().replace(/^Plan:\s*/i, "")
+        : slug;
+
+      // Catalog the plan (handles dedup automatically)
+      const planEntry = await catalogPlan(projectPath, {
+        title,
+        content,
+        sessionId,
+      });
+
+      // Return reference pointing to the cataloged plan
+      references.push({
+        path: path.join(projectPath, ".jacques", planEntry.path),
+        name: planEntry.filename,
+        archivedPath: planEntry.path,
+        source: "write" as const, // Treat as "write" since it's from a file
+      });
+    } catch (error) {
+      // Plan file doesn't exist for this slug - that's fine, not all sessions have plans
+    }
+  }
+
+  return references;
+}
+
+/**
+ * @deprecated Use detectWrittenPlanPaths instead
+ */
+export function detectPlans(entries: ParsedEntry[]): PlanReference[] {
+  const paths = detectWrittenPlanPaths(entries);
+  return paths.map((p) => ({
     path: p,
     name: path.basename(p),
     archivedPath: `plans/${path.basename(p)}`,

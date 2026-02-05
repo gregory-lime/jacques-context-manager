@@ -213,6 +213,7 @@ export interface ParsedEntry {
   parentUuid: string | null;
   timestamp: string;
   sessionId: string;
+  slug?: string; // Session slug for plan mode (e.g., "transient-hugging-sprout")
   content: ParsedContent;
 }
 
@@ -408,6 +409,7 @@ export function categorizeEntry(entry: RawEntry, context?: ParseContext): Parsed
     (entry as RawAssistantEntry).parentUuid ?? null;
   const timestamp: string = (entry as { timestamp?: string }).timestamp || "";
   const sessionId: string = (entry as RawAssistantEntry).sessionId || "";
+  const slug: string | undefined = (entry as { slug?: string }).slug;
 
   switch (entry.type) {
     case "user": {
@@ -428,6 +430,7 @@ export function categorizeEntry(entry: RawEntry, context?: ParseContext): Parsed
         parentUuid,
         timestamp,
         sessionId,
+        slug,
         type: "user_message",
         content: { text, toolUseResult },
       };
@@ -692,6 +695,7 @@ export function categorizeEntry(entry: RawEntry, context?: ParseContext): Parsed
         parentUuid,
         timestamp,
         sessionId,
+        slug,
         type: "skip",
         content: {},
       };
