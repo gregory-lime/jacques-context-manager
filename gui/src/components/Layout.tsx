@@ -43,7 +43,7 @@ export function Layout() {
 
   const [showLogs, setShowLogs] = useState(() => {
     const saved = localStorage.getItem('jacques-show-logs');
-    return saved !== null ? saved === 'true' : true;
+    return saved !== null ? saved === 'true' : false;
   });
 
   useEffect(() => {
