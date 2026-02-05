@@ -103,6 +103,27 @@ Plans undergo two-level deduplication:
 | `agent` | Plan subagent generates plan | Subagent JSONL |
 | `write` | Claude writes plan to `.md` file | File on disk |
 
+## Plan Progress Module (`core/src/plan/`)
+
+Tracks task completion within sessions for plan progress display.
+
+- `types.ts` — TaskSignal, TaskStatus, ProgressItem interfaces
+- `task-extractor.ts` — Extract tasks from JSONL (TaskCreate, TaskUpdate, TaskList tool calls)
+- `plan-parser.ts` — Parse markdown plan structure into items
+- `progress-matcher.ts` — Match tasks to plan items (title similarity)
+- `progress-computer.ts` — Compute overall plan completion percentage
+
+**Task Sources** (priority order):
+| Source | Tool | Confidence |
+|--------|------|------------|
+| `task_create` | TaskCreate | 1.0 |
+| `task_update` | TaskUpdate | 1.0 |
+| `task_list` | TaskList results | 0.9 |
+
+**API Endpoint**: `GET /api/sessions/:id/tasks` returns extracted tasks with summary (total, completed, percentage).
+
+**GUI Display**: Dashboard shows task count as `X/Y` format with checkmark when all complete. PlanViewer shows collapsible task list.
+
 ## Cache Module (`core/src/cache/`)
 
 Lightweight session indexing — reads Claude Code's native `sessions-index.json` with fallback to direct JSONL scanning.

@@ -73,7 +73,18 @@ PlanNavigator
 PlanViewer
   ├─ Has catalogId? → GET /api/projects/:path/plans/:id/content
   └─ No catalogId? → GET /api/sessions/:id/plans/:messageIndex
+  └─ Task Progress → GET /api/sessions/:id/tasks (summary + task list)
 ```
+
+## Plan Progress Display
+
+Dashboard shows task progress for plans:
+- **Loading**: Spinner while fetching task data
+- **In Progress**: `X/Y` format (e.g., "5/7")
+- **Complete**: Green checkmark + `X/X`
+- **No Tasks**: Nothing shown (session didn't use TaskCreate/TaskUpdate)
+
+When multiple sessions have the same plan title, the Dashboard finds the session with actual tasks for accurate progress display.
 
 ## Hooks (`gui/src/hooks/`)
 

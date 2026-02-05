@@ -1105,6 +1105,49 @@ export async function deleteContextFile(encodedPath: string, id: string): Promis
 }
 
 /**
+ * Task from a session
+ */
+export interface SessionTask {
+  id: string;
+  subject: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  timestamp: string;
+}
+
+/**
+ * Task summary for a session
+ */
+export interface SessionTaskSummary {
+  total: number;
+  completed: number;
+  inProgress: number;
+  pending: number;
+  percentage: number;
+}
+
+/**
+ * Response from getSessionTasks
+ */
+export interface SessionTasksResponse {
+  tasks: SessionTask[];
+  summary: SessionTaskSummary;
+}
+
+/**
+ * Get tasks from a session (deduplicated TaskCreate/TaskUpdate calls)
+ */
+export async function getSessionTasks(sessionId: string): Promise<SessionTasksResponse> {
+  const response = await fetch(`${API_URL}/sessions/${sessionId}/tasks`);
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error('Session not found');
+    }
+    throw new Error(`Failed to get session tasks: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
  * Rebuild the session index
  * Returns an SSE stream for progress updates
  */

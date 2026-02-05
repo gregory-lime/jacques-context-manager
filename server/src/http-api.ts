@@ -55,6 +55,7 @@ import {
   extractProjectCatalog,
   addContextToIndex,
   removeContextFromIndex,
+  extractTaskSignals,
 } from '@jacques/core';
 import type { ContextFile } from '@jacques/core';
 
@@ -992,6 +993,69 @@ export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpA
         sendJson(res, 200, { searches });
       } catch (error) {
         sendJson(res, 500, { error: 'Failed to get web searches' });
+      }
+      return;
+    }
+
+    // Route: GET /api/sessions/:id/tasks
+    // Get deduplicated tasks from the session (TaskCreate/TaskUpdate tool calls)
+    if (method === 'GET' && url.match(/^\/api\/sessions\/[^/]+\/tasks$/)) {
+      const match = url.match(/^\/api\/sessions\/([^/]+)\/tasks$/);
+      const sessionId = match?.[1];
+
+      if (!sessionId) {
+        sendJson(res, 400, { error: 'Invalid session ID' });
+        return;
+      }
+
+      try {
+        let sessionEntry = await getSessionEntry(sessionId);
+        let jsonlPath: string;
+
+        if (!sessionEntry) {
+          const sessionFile = await findSessionById(sessionId);
+          if (!sessionFile) {
+            sendJson(res, 404, { error: 'Session not found' });
+            return;
+          }
+          jsonlPath = sessionFile.filePath;
+        } else {
+          jsonlPath = sessionEntry.jsonlPath;
+        }
+
+        // Parse JSONL and extract task signals
+        const entries = await parseJSONL(jsonlPath);
+        const signals = extractTaskSignals(entries, sessionId);
+
+        // Filter to only TaskCreate/TaskUpdate signals (deduplicated by task ID in extractor)
+        const tasks = signals
+          .filter(s => s.source === 'task_create' || s.source === 'task_update')
+          .map(s => ({
+            id: s.taskId || `auto-${signals.indexOf(s)}`,
+            subject: s.text,
+            status: s.status,
+            timestamp: s.timestamp,
+          }));
+
+        // Calculate summary
+        const completed = tasks.filter(t => t.status === 'completed').length;
+        const inProgress = tasks.filter(t => t.status === 'in_progress').length;
+        const pending = tasks.filter(t => t.status === 'pending').length;
+        const total = tasks.length;
+        const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+        sendJson(res, 200, {
+          tasks,
+          summary: {
+            total,
+            completed,
+            inProgress,
+            pending,
+            percentage,
+          },
+        });
+      } catch (error) {
+        sendJson(res, 500, { error: 'Failed to get session tasks' });
       }
       return;
     }
