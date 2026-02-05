@@ -53,7 +53,10 @@ import {
   readProjectIndex,
   extractAllCatalogs,
   extractProjectCatalog,
+  addContextToIndex,
+  removeContextFromIndex,
 } from '@jacques/core';
+import type { ContextFile } from '@jacques/core';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1202,6 +1205,199 @@ export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpA
         });
       } catch (error) {
         sendJson(res, 500, { error: 'Failed to get plan content' });
+      }
+      return;
+    }
+
+    // === Context Catalog API Routes ===
+
+    // Route: GET /api/projects/:encodedPath/catalog
+    // Get full catalog (context files, plans, sessions) for a project
+    if (method === 'GET' && url.match(/^\/api\/projects\/[^/]+\/catalog$/)) {
+      const match = url.match(/^\/api\/projects\/([^/]+)\/catalog$/);
+      const encodedPath = match?.[1];
+
+      if (!encodedPath) {
+        sendJson(res, 400, { error: 'Invalid project path' });
+        return;
+      }
+
+      try {
+        const projectPath = await decodeProjectPath(decodeURIComponent(encodedPath));
+        const index = await readProjectIndex(projectPath);
+        sendJson(res, 200, {
+          context: index.context,
+          plans: index.plans,
+          sessions: index.sessions,
+          updatedAt: index.updatedAt,
+        });
+      } catch (error) {
+        sendJson(res, 500, { error: 'Failed to get project catalog' });
+      }
+      return;
+    }
+
+    // Route: GET /api/projects/:encodedPath/context/:id/content
+    // Get file content for a context file
+    if (method === 'GET' && url.match(/^\/api\/projects\/[^/]+\/context\/[^/]+\/content$/)) {
+      const match = url.match(/^\/api\/projects\/([^/]+)\/context\/([^/]+)\/content$/);
+      const encodedPath = match?.[1];
+      const contextId = match?.[2];
+
+      if (!encodedPath || !contextId) {
+        sendJson(res, 400, { error: 'Invalid project path or context ID' });
+        return;
+      }
+
+      try {
+        const projectPath = await decodeProjectPath(decodeURIComponent(encodedPath));
+        const index = await readProjectIndex(projectPath);
+        const contextFile = index.context.find(f => f.id === contextId);
+
+        if (!contextFile) {
+          sendJson(res, 404, { error: 'Context file not found' });
+          return;
+        }
+
+        const filePath = join(projectPath, contextFile.path);
+        const content = await fsPromises.readFile(filePath, 'utf-8');
+        sendJson(res, 200, { content });
+      } catch (error) {
+        sendJson(res, 500, { error: 'Failed to read context file' });
+      }
+      return;
+    }
+
+    // Route: POST /api/projects/:encodedPath/context
+    // Add a new context note (creates file + updates index)
+    if (method === 'POST' && url.match(/^\/api\/projects\/[^/]+\/context$/)) {
+      const match = url.match(/^\/api\/projects\/([^/]+)\/context$/);
+      const encodedPath = match?.[1];
+
+      if (!encodedPath) {
+        sendJson(res, 400, { error: 'Invalid project path' });
+        return;
+      }
+
+      const body = await parseBody<{ name: string; content: string; description?: string }>(req);
+      if (!body || !body.name || !body.content) {
+        sendJson(res, 400, { error: 'Missing name or content' });
+        return;
+      }
+
+      try {
+        const projectPath = await decodeProjectPath(decodeURIComponent(encodedPath));
+
+        // Generate ID and write file
+        const slug = body.name.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 30);
+        const randomSuffix = Math.random().toString(16).substring(2, 8);
+        const id = `${slug.toLowerCase()}-${randomSuffix}`;
+        const filename = `${slug}.md`;
+        const contextDir = join(projectPath, '.jacques', 'context');
+        const filePath = join(contextDir, filename);
+        const relativePath = join('.jacques', 'context', filename);
+
+        await fsPromises.mkdir(contextDir, { recursive: true });
+        await fsPromises.writeFile(filePath, body.content, 'utf-8');
+        const stats = await fsPromises.stat(filePath);
+
+        const contextFile: ContextFile = {
+          id,
+          name: body.name,
+          path: relativePath,
+          source: 'local',
+          sourceFile: filePath,
+          addedAt: new Date().toISOString(),
+          description: body.description,
+          sizeBytes: stats.size,
+        };
+
+        await addContextToIndex(projectPath, contextFile);
+        sendJson(res, 201, contextFile);
+      } catch (error) {
+        sendJson(res, 500, { error: 'Failed to add context note' });
+      }
+      return;
+    }
+
+    // Route: PUT /api/projects/:encodedPath/context/:id
+    // Update context file content
+    if (method === 'PUT' && url.match(/^\/api\/projects\/[^/]+\/context\/[^/]+$/) && !url.endsWith('/content')) {
+      const match = url.match(/^\/api\/projects\/([^/]+)\/context\/([^/]+)$/);
+      const encodedPath = match?.[1];
+      const contextId = match?.[2];
+
+      if (!encodedPath || !contextId) {
+        sendJson(res, 400, { error: 'Invalid project path or context ID' });
+        return;
+      }
+
+      const body = await parseBody<{ content: string }>(req);
+      if (!body || typeof body.content !== 'string') {
+        sendJson(res, 400, { error: 'Missing content' });
+        return;
+      }
+
+      try {
+        const projectPath = await decodeProjectPath(decodeURIComponent(encodedPath));
+        const index = await readProjectIndex(projectPath);
+        const contextFile = index.context.find(f => f.id === contextId);
+
+        if (!contextFile) {
+          sendJson(res, 404, { error: 'Context file not found' });
+          return;
+        }
+
+        const filePath = join(projectPath, contextFile.path);
+        await fsPromises.writeFile(filePath, body.content, 'utf-8');
+        const stats = await fsPromises.stat(filePath);
+
+        // Update size in index
+        contextFile.sizeBytes = stats.size;
+        await addContextToIndex(projectPath, contextFile);
+
+        sendJson(res, 200, { success: true });
+      } catch (error) {
+        sendJson(res, 500, { error: 'Failed to update context file' });
+      }
+      return;
+    }
+
+    // Route: DELETE /api/projects/:encodedPath/context/:id
+    // Delete a context file
+    if (method === 'DELETE' && url.match(/^\/api\/projects\/[^/]+\/context\/[^/]+$/)) {
+      const match = url.match(/^\/api\/projects\/([^/]+)\/context\/([^/]+)$/);
+      const encodedPath = match?.[1];
+      const contextId = match?.[2];
+
+      if (!encodedPath || !contextId) {
+        sendJson(res, 400, { error: 'Invalid project path or context ID' });
+        return;
+      }
+
+      try {
+        const projectPath = await decodeProjectPath(decodeURIComponent(encodedPath));
+        const index = await readProjectIndex(projectPath);
+        const contextFile = index.context.find(f => f.id === contextId);
+
+        if (!contextFile) {
+          sendJson(res, 404, { error: 'Context file not found' });
+          return;
+        }
+
+        // Delete the file
+        const filePath = join(projectPath, contextFile.path);
+        try {
+          await fsPromises.unlink(filePath);
+        } catch {
+          // File may already be deleted
+        }
+
+        // Remove from index
+        await removeContextFromIndex(projectPath, contextId);
+        sendJson(res, 200, { success: true });
+      } catch (error) {
+        sendJson(res, 500, { error: 'Failed to delete context file' });
       }
       return;
     }

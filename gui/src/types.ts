@@ -177,6 +177,99 @@ export interface ApiLogMessage {
   timestamp: number;
 }
 
+// ─── Chat Message Types ───────────────────────────────────────
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+  /** Tool names used during this response */
+  tools?: string[];
+  /** Whether this message is still streaming */
+  isStreaming?: boolean;
+}
+
+export interface CatalogItem {
+  id: string;
+  name: string;
+  path: string;
+  source: string;
+  sourceFile: string;
+  addedAt: string;
+  description?: string;
+  sizeBytes: number;
+  tags?: string[];
+}
+
+export interface CatalogPlanEntry {
+  id: string;
+  title: string;
+  filename: string;
+  path: string;
+  contentHash?: string;
+  createdAt: string;
+  updatedAt: string;
+  sessions: string[];
+}
+
+export interface CatalogSessionEntry {
+  id: string;
+  title: string;
+  filename: string;
+  path: string;
+  savedAt: string;
+  startedAt: string;
+  endedAt: string;
+  durationMinutes: number;
+  messageCount: number;
+  toolCallCount: number;
+  technologies: string[];
+}
+
+export interface ProjectCatalog {
+  context: CatalogItem[];
+  plans: CatalogPlanEntry[];
+  sessions: CatalogSessionEntry[];
+  updatedAt: string;
+}
+
+// Chat WS message types (server → client)
+
+export interface ChatDeltaMessage {
+  type: 'chat_delta';
+  projectPath: string;
+  text: string;
+}
+
+export interface ChatToolEventMessage {
+  type: 'chat_tool_event';
+  projectPath: string;
+  toolName: string;
+}
+
+export interface ChatCompleteMessage {
+  type: 'chat_complete';
+  projectPath: string;
+  fullText: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface ChatErrorMessage {
+  type: 'chat_error';
+  projectPath: string;
+  reason: string;
+  message: string;
+}
+
+export interface CatalogUpdatedMessage {
+  type: 'catalog_updated';
+  projectPath: string;
+  action: string;
+  itemId?: string;
+}
+
 export type ServerMessage =
   | InitialStateMessage
   | SessionUpdateMessage
@@ -184,7 +277,12 @@ export type ServerMessage =
   | FocusChangedMessage
   | AutoCompactToggledMessage
   | ClaudeOperationMessage
-  | ApiLogMessage;
+  | ApiLogMessage
+  | ChatDeltaMessage
+  | ChatToolEventMessage
+  | ChatCompleteMessage
+  | ChatErrorMessage
+  | CatalogUpdatedMessage;
 
 // Conversation types for the viewer
 

@@ -106,7 +106,12 @@ jacques-context-manager/
 │   ├── session/         # Session parsing and transformation
 │   ├── storage/         # File I/O utilities
 │   └── templates/       # Skill templates
-├── gui/                 # Web-based GUI (Electron/React)
+├── gui/src/             # Web GUI (React + Vite)
+│   ├── components/      # React components
+│   │   └── context/     # Context Catalog GUI components
+│   ├── hooks/           # Custom React hooks
+│   ├── pages/           # Route pages
+│   └── styles/          # Theme and styling
 ├── hooks/               # Claude Code/Cursor hooks (Python/Bash)
 ├── scripts/             # Setup and configuration scripts
 └── docs/                # Documentation

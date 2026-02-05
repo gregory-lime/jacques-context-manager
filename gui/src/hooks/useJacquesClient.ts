@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Session, ClaudeOperation, ApiLog } from '../types';
 import { toastStore } from '../components/ui/ToastContainer';
 
@@ -35,6 +35,11 @@ class BrowserJacquesClient {
   public onClaudeOperation?: (operation: ClaudeOperation) => void;
   public onApiLog?: (log: ApiLog) => void;
   public onHandoffReady?: (sessionId: string, path: string) => void;
+  public onChatDelta?: (projectPath: string, text: string) => void;
+  public onChatToolEvent?: (projectPath: string, toolName: string) => void;
+  public onChatComplete?: (projectPath: string, fullText: string, inputTokens: number, outputTokens: number) => void;
+  public onChatError?: (projectPath: string, reason: string, message: string) => void;
+  public onCatalogUpdated?: (projectPath: string, action: string, itemId?: string) => void;
 
   connect() {
     try {
@@ -133,6 +138,40 @@ class BrowserJacquesClient {
           message.path as string,
         );
         break;
+      case 'chat_delta':
+        this.onChatDelta?.(
+          message.projectPath as string,
+          message.text as string,
+        );
+        break;
+      case 'chat_tool_event':
+        this.onChatToolEvent?.(
+          message.projectPath as string,
+          message.toolName as string,
+        );
+        break;
+      case 'chat_complete':
+        this.onChatComplete?.(
+          message.projectPath as string,
+          message.fullText as string,
+          message.inputTokens as number,
+          message.outputTokens as number,
+        );
+        break;
+      case 'chat_error':
+        this.onChatError?.(
+          message.projectPath as string,
+          message.reason as string,
+          message.message as string,
+        );
+        break;
+      case 'catalog_updated':
+        this.onCatalogUpdated?.(
+          message.projectPath as string,
+          message.action as string,
+          message.itemId as string | undefined,
+        );
+        break;
     }
   }
 
@@ -146,6 +185,14 @@ class BrowserJacquesClient {
 
   toggleAutoCompact() {
     this.send({ type: 'toggle_autocompact' });
+  }
+
+  sendChatMessage(projectPath: string, message: string) {
+    this.send({ type: 'chat_send', projectPath, message });
+  }
+
+  abortChat(projectPath: string) {
+    this.send({ type: 'chat_abort', projectPath });
   }
 
   private send(data: unknown) {
@@ -169,6 +216,14 @@ export interface JacquesState {
   apiLogs: ApiLog[];
 }
 
+export interface ChatCallbacks {
+  onChatDelta?: (projectPath: string, text: string) => void;
+  onChatToolEvent?: (projectPath: string, toolName: string) => void;
+  onChatComplete?: (projectPath: string, fullText: string, inputTokens: number, outputTokens: number) => void;
+  onChatError?: (projectPath: string, reason: string, message: string) => void;
+  onCatalogUpdated?: (projectPath: string, action: string, itemId?: string) => void;
+}
+
 export interface UseJacquesClientReturn extends JacquesState {
   selectSession: (sessionId: string) => void;
   triggerAction: (
@@ -176,6 +231,9 @@ export interface UseJacquesClientReturn extends JacquesState {
     action: 'smart_compact' | 'new_session' | 'save_snapshot'
   ) => void;
   toggleAutoCompact: () => void;
+  sendChatMessage: (projectPath: string, message: string) => void;
+  abortChat: (projectPath: string) => void;
+  setChatCallbacks: (callbacks: ChatCallbacks) => void;
 }
 
 const MAX_LOGS = 100;
@@ -191,6 +249,7 @@ export function useJacquesClient(): UseJacquesClientReturn {
   const [claudeOperations, setClaudeOperations] = useState<ClaudeOperation[]>([]);
   const [apiLogs, setApiLogs] = useState<ApiLog[]>([]);
   const [client, setClient] = useState<BrowserJacquesClient | null>(null);
+  const chatCallbacksRef = useRef<ChatCallbacks>({});
 
   useEffect(() => {
     const jacquesClient = new BrowserJacquesClient();
@@ -316,6 +375,23 @@ export function useJacquesClient(): UseJacquesClientReturn {
       });
     };
 
+    // Wire chat callbacks through ref (allows updating without re-creating client)
+    jacquesClient.onChatDelta = (projectPath, text) => {
+      chatCallbacksRef.current.onChatDelta?.(projectPath, text);
+    };
+    jacquesClient.onChatToolEvent = (projectPath, toolName) => {
+      chatCallbacksRef.current.onChatToolEvent?.(projectPath, toolName);
+    };
+    jacquesClient.onChatComplete = (projectPath, fullText, inputTokens, outputTokens) => {
+      chatCallbacksRef.current.onChatComplete?.(projectPath, fullText, inputTokens, outputTokens);
+    };
+    jacquesClient.onChatError = (projectPath, reason, message) => {
+      chatCallbacksRef.current.onChatError?.(projectPath, reason, message);
+    };
+    jacquesClient.onCatalogUpdated = (projectPath, action, itemId) => {
+      chatCallbacksRef.current.onCatalogUpdated?.(projectPath, action, itemId);
+    };
+
     // Connect
     jacquesClient.connect();
     setClient(jacquesClient);
@@ -343,6 +419,18 @@ export function useJacquesClient(): UseJacquesClientReturn {
     client?.toggleAutoCompact();
   }, [client]);
 
+  const sendChatMessage = useCallback((projectPath: string, message: string) => {
+    client?.sendChatMessage(projectPath, message);
+  }, [client]);
+
+  const abortChat = useCallback((projectPath: string) => {
+    client?.abortChat(projectPath);
+  }, [client]);
+
+  const setChatCallbacks = useCallback((callbacks: ChatCallbacks) => {
+    chatCallbacksRef.current = callbacks;
+  }, []);
+
   return {
     sessions,
     focusedSessionId,
@@ -354,5 +442,8 @@ export function useJacquesClient(): UseJacquesClientReturn {
     selectSession,
     triggerAction,
     toggleAutoCompact,
+    sendChatMessage,
+    abortChat,
+    setChatCallbacks,
   };
 }

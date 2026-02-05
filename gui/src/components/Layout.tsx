@@ -6,6 +6,8 @@ import {
   BookOpen,
   Settings,
   Terminal,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { colors } from '../styles/theme';
 import { ProjectSelector } from './ProjectSelector';
@@ -41,10 +43,18 @@ export function Layout() {
   const sessionIds = sessions.map(s => s.session_id);
   const { badges } = useSessionBadges(sessionIds);
 
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('jacques-sidebar-collapsed') === 'true';
+  });
+
   const [showLogs, setShowLogs] = useState(() => {
     const saved = localStorage.getItem('jacques-show-logs');
     return saved !== null ? saved === 'true' : false;
   });
+
+  useEffect(() => {
+    localStorage.setItem('jacques-sidebar-collapsed', String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     localStorage.setItem('jacques-show-logs', String(showLogs));
@@ -72,35 +82,53 @@ export function Layout() {
     <div style={styles.container}>
       <ToastContainer />
       {/* Sidebar */}
-      <aside style={styles.sidebar} id="sidebar">
+      <aside
+        style={{
+          ...styles.sidebar,
+          width: sidebarCollapsed ? '56px' : '240px',
+          transition: 'width 200ms ease',
+        }}
+        id="sidebar"
+      >
         {/* Logo/Title */}
-        <div style={styles.logoSection}>
+        <div style={{
+          ...styles.logoSection,
+          justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+          padding: sidebarCollapsed ? '0 0 12px' : '0 16px 12px',
+        }}>
           <img
             src="/jacsub.png"
             alt="Jacques"
             style={styles.mascot}
           />
-          <span style={styles.logoText}>Jacques</span>
+          {!sidebarCollapsed && <span style={styles.logoText}>Jacques</span>}
         </div>
 
         {/* Block art separator */}
-        <div style={styles.blockSeparator}>
-          <div style={{
-            height: '1px',
-            background: `linear-gradient(90deg, transparent, ${colors.accent}40, transparent)`,
-          }} />
-        </div>
+        {!sidebarCollapsed && (
+          <div style={styles.blockSeparator}>
+            <div style={{
+              height: '1px',
+              background: `linear-gradient(90deg, transparent, ${colors.accent}40, transparent)`,
+            }} />
+          </div>
+        )}
 
         {/* Project Scope Selector */}
-        <ProjectSelector
-          sessions={sessions}
-          archivedProjects={archivedProjects}
-          selectedProject={selectedProject}
-          onSelectProject={setSelectedProject}
-        />
+        {!sidebarCollapsed && (
+          <ProjectSelector
+            sessions={sessions}
+            archivedProjects={archivedProjects}
+            selectedProject={selectedProject}
+            onSelectProject={setSelectedProject}
+          />
+        )}
 
         {/* Navigation */}
-        <nav style={styles.nav}>
+        <nav style={{
+          ...styles.nav,
+          padding: sidebarCollapsed ? '0 4px' : '0 8px',
+        }}>
           {navItems.map((item) => {
             const isActive = location.pathname === item.path ||
               (item.path !== '/' && location.pathname.startsWith(item.path));
@@ -120,67 +148,98 @@ export function Layout() {
                   style={{
                     ...styles.navLink,
                     ...(isActive ? styles.navLinkActive : {}),
+                    ...(sidebarCollapsed ? {
+                      justifyContent: 'center',
+                      padding: '8px',
+                      gap: '0',
+                    } : {}),
                   }}
+                  title={sidebarCollapsed ? item.label : undefined}
                 >
-                  {isActive && <span style={styles.activeIndicator} />}
+                  {isActive && !sidebarCollapsed && <span style={styles.activeIndicator} />}
                   <item.Icon size={16} style={{ flexShrink: 0, opacity: isActive ? 1 : 0.6 }} />
-                  <span>{item.label}</span>
+                  {!sidebarCollapsed && <span>{item.label}</span>}
                 </NavLink>
-                {item.path === '/' && <SidebarSessionList />}
+                {item.path === '/' && !sidebarCollapsed && <SidebarSessionList />}
               </React.Fragment>
             );
           })}
         </nav>
 
         {/* Sources Section */}
-        <div style={styles.sourcesSection}>
-          <Link to="/sources" style={styles.sectionHeaderLink}>
-            <SectionHeader title="Sources" accentColor={colors.accent} />
-          </Link>
-          {[
-            { key: 'obsidian' as const, label: 'Obsidian' },
-            { key: 'googleDocs' as const, label: 'Google Docs' },
-            { key: 'notion' as const, label: 'Notion' },
-          ].map(({ key, label }) => (
-            <Link
-              key={key}
-              to="/sources"
-              style={{
-                ...styles.sourceItem,
-                color: sourceStatus[key].connected ? colors.textSecondary : colors.textMuted,
-              }}
-            >
-              <span>{label}</span>
-              <span
-                style={{
-                  width: '6px',
-                  height: '6px',
-                  borderRadius: '50%',
-                  backgroundColor: sourceStatus[key].connected ? colors.success : colors.textMuted,
-                  opacity: sourceStatus[key].connected ? 1 : 0.4,
-                  marginLeft: 'auto',
-                  flexShrink: 0,
-                }}
-              />
+        {!sidebarCollapsed && (
+          <div style={styles.sourcesSection}>
+            <Link to="/sources" style={styles.sectionHeaderLink}>
+              <SectionHeader title="Sources" accentColor={colors.accent} />
             </Link>
-          ))}
-        </div>
+            {[
+              { key: 'obsidian' as const, label: 'Obsidian' },
+              { key: 'googleDocs' as const, label: 'Google Docs' },
+              { key: 'notion' as const, label: 'Notion' },
+            ].map(({ key, label }) => (
+              <Link
+                key={key}
+                to="/sources"
+                style={{
+                  ...styles.sourceItem,
+                  color: sourceStatus[key].connected ? colors.textSecondary : colors.textMuted,
+                }}
+              >
+                <span>{label}</span>
+                <span
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    backgroundColor: sourceStatus[key].connected ? colors.success : colors.textMuted,
+                    opacity: sourceStatus[key].connected ? 1 : 0.4,
+                    marginLeft: 'auto',
+                    flexShrink: 0,
+                  }}
+                />
+              </Link>
+            ))}
+          </div>
+        )}
 
         {/* Footer */}
-        <div style={styles.sidebarFooter}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <NavLink
-              to="/settings"
-              style={{
-                ...styles.navLink,
-                ...(location.pathname === '/settings' ? styles.navLinkActive : {}),
-                flex: 1,
-              }}
-            >
-              {location.pathname === '/settings' && <span style={styles.activeIndicator} />}
-              <Settings size={16} style={{ flexShrink: 0, opacity: location.pathname === '/settings' ? 1 : 0.6 }} />
-              <span>Settings</span>
-            </NavLink>
+        <div style={{
+          ...styles.sidebarFooter,
+          ...(sidebarCollapsed ? { marginTop: 'auto' } : {}),
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: sidebarCollapsed ? 'center' : 'center',
+            gap: '4px',
+            flexDirection: sidebarCollapsed ? 'column' : 'row',
+          }}>
+            {!sidebarCollapsed ? (
+              <NavLink
+                to="/settings"
+                style={{
+                  ...styles.navLink,
+                  ...(location.pathname === '/settings' ? styles.navLinkActive : {}),
+                  flex: 1,
+                }}
+              >
+                {location.pathname === '/settings' && <span style={styles.activeIndicator} />}
+                <Settings size={16} style={{ flexShrink: 0, opacity: location.pathname === '/settings' ? 1 : 0.6 }} />
+                <span>Settings</span>
+              </NavLink>
+            ) : (
+              <NavLink
+                to="/settings"
+                style={{
+                  ...styles.navLink,
+                  ...(location.pathname === '/settings' ? styles.navLinkActive : {}),
+                  justifyContent: 'center',
+                  padding: '8px',
+                }}
+                title="Settings"
+              >
+                <Settings size={16} style={{ flexShrink: 0, opacity: location.pathname === '/settings' ? 1 : 0.6 }} />
+              </NavLink>
+            )}
 
             <NotificationCenter />
 
@@ -196,6 +255,20 @@ export function Layout() {
               title={showLogs ? 'Hide logs' : 'Show logs'}
             >
               <Terminal size={16} />
+            </button>
+
+            <button
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 32, height: 32, border: 'none', borderRadius: '6px',
+                cursor: 'pointer', transition: 'all 150ms ease', flexShrink: 0,
+                backgroundColor: 'transparent',
+                color: colors.textMuted,
+              }}
+              onClick={() => setSidebarCollapsed(c => !c)}
+              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
             </button>
           </div>
         </div>
@@ -235,13 +308,13 @@ const styles: Record<string, React.CSSProperties> = {
     position: 'relative',
   },
   sidebar: {
-    width: '240px',
     backgroundColor: colors.bgSecondary,
     borderRight: `1px solid ${colors.borderSubtle}`,
     display: 'flex',
     flexDirection: 'column',
     padding: '16px 0',
     flexShrink: 0,
+    overflow: 'hidden',
   },
   logoSection: {
     display: 'flex',
