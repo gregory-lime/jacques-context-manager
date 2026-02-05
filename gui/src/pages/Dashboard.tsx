@@ -11,14 +11,15 @@ import { useProjectScope } from '../hooks/useProjectScope.js';
 import { useSessionBadges } from '../hooks/useSessionBadges';
 import { useOpenSessions } from '../hooks/useOpenSessions';
 import { useAssetModal } from '../hooks/useAssetModal';
-import { listSessionsByProject, getSessionPlanContent, getSubagentFromSession, getSessionWebSearches, type SessionEntry } from '../api';
+import { listSessionsByProject, getSubagentFromSession, getSessionWebSearches, getProjectPlanCatalog, getSessionTasks, type SessionEntry, type SessionTaskSummary } from '../api';
 import { colors } from '../styles/theme';
 import { SectionHeader, Badge, ContentModal } from '../components/ui';
-import { planModalConfig, agentModalConfig, webSearchModalConfig } from '../components/ui/contentModalConfigs';
+import { agentModalConfig, webSearchModalConfig } from '../components/ui/contentModalConfigs';
 import { ActiveSessionViewer } from '../components/ActiveSessionViewer';
 import { WorktreeSessionsView } from '../components/WorktreeSessionsView';
+import { PlanViewer } from '../components/Conversation/PlanViewer';
 import { PlanIcon, AgentIcon, StatusDot } from '../components/Icons';
-import { Globe, GitBranch } from 'lucide-react';
+import { Globe, GitBranch, CheckCircle2, Loader } from 'lucide-react';
 import type { Session } from '../types';
 
 // ─── Color Constants ─────────────────────────────────────────
@@ -216,15 +217,19 @@ function toSessionListItems(liveSessions: Session[], savedSessions: SessionEntry
   return items;
 }
 
+interface PlanInstance {
+  sessionId: string;
+  messageIndex: number;
+  source: 'embedded' | 'write' | 'agent';
+  filePath?: string;
+  agentId?: string;
+}
+
 function aggregateDocuments(savedSessions: SessionEntry[]) {
+  // Track all instances of each plan (by normalized title)
   const planMap = new Map<string, {
     title: string;
-    sessionIds: Set<string>;
-    messageIndex: number;
-    source: 'embedded' | 'write' | 'agent';
-    filePath?: string;
-    agentId?: string;
-    sessionId: string;
+    instances: PlanInstance[];
   }>();
   const explorations: ExploreItem[] = [];
   const webSearches: WebSearchItem[] = [];
@@ -235,17 +240,19 @@ function aggregateDocuments(savedSessions: SessionEntry[]) {
         const title = ref.title.replace(/^Plan:\s*/i, '');
         const normalizedKey = title.toLowerCase().trim();
         const existing = planMap.get(normalizedKey);
+        const instance: PlanInstance = {
+          sessionId: session.id,
+          messageIndex: ref.messageIndex,
+          source: ref.source,
+          filePath: ref.filePath,
+          agentId: ref.agentId,
+        };
         if (existing) {
-          existing.sessionIds.add(session.id);
+          existing.instances.push(instance);
         } else {
           planMap.set(normalizedKey, {
             title,
-            sessionIds: new Set([session.id]),
-            messageIndex: ref.messageIndex,
-            source: ref.source,
-            filePath: ref.filePath,
-            agentId: ref.agentId,
-            sessionId: session.id,
+            instances: [instance],
           });
         }
       }
@@ -262,15 +269,20 @@ function aggregateDocuments(savedSessions: SessionEntry[]) {
     }
   }
 
-  const plans: PlanItem[] = Array.from(planMap.values()).map(({ title, sessionIds, messageIndex, source, filePath, agentId, sessionId }) => ({
-    title,
-    sessionId,
-    sessionCount: sessionIds.size,
-    messageIndex,
-    source,
-    filePath,
-    agentId,
-  }));
+  // Convert to PlanItem array - use first instance as default, but keep all instances
+  const plans: (PlanItem & { instances: PlanInstance[] })[] = Array.from(planMap.values()).map(({ title, instances }) => {
+    const first = instances[0];
+    return {
+      title,
+      sessionId: first.sessionId,
+      sessionCount: instances.length,
+      messageIndex: first.messageIndex,
+      source: first.source,
+      filePath: first.filePath,
+      agentId: first.agentId,
+      instances, // Keep all instances for progress lookup
+    };
+  });
 
   return { plans, explorations, webSearches };
 }
@@ -367,6 +379,20 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterSmallAssets, setFilterSmallAssets] = useState(false);
+  // Map sessionId -> task summary (not plan title, to avoid overwrites when multiple sessions have same plan)
+  const [sessionTasksMap, setSessionTasksMap] = useState<Map<string, SessionTaskSummary>>(new Map());
+  const [progressLoading, setProgressLoading] = useState(false);
+  const [catalogPlanIds, setCatalogPlanIds] = useState<Map<string, string>>(new Map()); // title -> catalogId
+  const [currentProjectPath, setCurrentProjectPath] = useState<string>('');
+  const [viewingPlan, setViewingPlan] = useState<{
+    title: string;
+    source: 'embedded' | 'write' | 'agent';
+    messageIndex: number;
+    filePath?: string;
+    catalogId?: string;
+    sessionId: string;
+    projectPath: string;
+  } | null>(null);
 
   useEffect(() => {
     async function loadSavedSessions() {
@@ -382,6 +408,83 @@ export function Dashboard() {
     }
     loadSavedSessions();
   }, []);
+
+  // Load catalog plans and task progress when project or sessions change
+  useEffect(() => {
+    // Get sessions to process - either specific project or all
+    const sessions = selectedProject
+      ? savedSessionsByProject[selectedProject] || []
+      : Object.values(savedSessionsByProject).flat();
+
+    if (sessions.length === 0) {
+      setSessionTasksMap(new Map());
+      setCatalogPlanIds(new Map());
+      setCurrentProjectPath('');
+      setProgressLoading(false);
+      return;
+    }
+
+    async function loadCatalogAndTasks() {
+      setProgressLoading(true);
+      try {
+        // Only load catalog when a specific project is selected
+        if (selectedProject) {
+          const jsonlPath = sessions[0].jsonlPath;
+          const match = jsonlPath?.match(/\/\.claude\/projects\/([^/]+)\//);
+          if (match) {
+            const encodedPath = match[1];
+            try {
+              const catalog = await getProjectPlanCatalog(encodedPath);
+              const idMap = new Map<string, string>();
+              for (const plan of catalog.plans || []) {
+                idMap.set(plan.title, plan.id);
+              }
+              setCatalogPlanIds(idMap);
+              setCurrentProjectPath(sessions[0].projectPath || '');
+            } catch {
+              setCatalogPlanIds(new Map());
+              setCurrentProjectPath('');
+            }
+          }
+        } else {
+          // "All Projects" view - clear catalog data
+          setCatalogPlanIds(new Map());
+          setCurrentProjectPath('');
+        }
+
+        // Fetch task progress for each session that has plans
+        const sessionIds = new Set<string>();
+        for (const session of sessions) {
+          if (session.planRefs && session.planRefs.length > 0) {
+            sessionIds.add(session.id);
+          }
+        }
+
+        const tasksMap = new Map<string, SessionTaskSummary>();
+
+        // Fetch tasks for each session (limit to 50 to avoid too many requests)
+        const sessionIdsArray = Array.from(sessionIds).slice(0, 50);
+        await Promise.all(
+          sessionIdsArray.map(async (sessionId) => {
+            try {
+              const tasksData = await getSessionTasks(sessionId);
+              tasksMap.set(sessionId, tasksData.summary);
+            } catch {
+              // Ignore errors for individual sessions
+            }
+          })
+        );
+
+        setSessionTasksMap(tasksMap);
+      } catch {
+        // Ignore errors
+      } finally {
+        setProgressLoading(false);
+      }
+    }
+
+    loadCatalogAndTasks();
+  }, [selectedProject, savedSessionsByProject]);
 
   const filteredLiveSessions = useMemo(() => filterSessions(allLiveSessions), [allLiveSessions, filterSessions]);
 
@@ -427,15 +530,18 @@ export function Dashboard() {
 
   // ── Asset click handlers ──
 
-  const handlePlanClick = useCallback(async (plan: PlanItem) => {
-    openAsset(
-      planModalConfig(plan.title, plan.source, '', plan.filePath),
-      async () => {
-        const data = await getSessionPlanContent(plan.sessionId, plan.messageIndex);
-        return { content: data.content };
-      },
-    );
-  }, [openAsset]);
+  const handlePlanClick = useCallback((plan: PlanItem) => {
+    const catalogId = catalogPlanIds.get(plan.title);
+    setViewingPlan({
+      title: plan.title,
+      source: plan.source,
+      messageIndex: plan.messageIndex,
+      filePath: plan.filePath,
+      catalogId,
+      sessionId: plan.sessionId,
+      projectPath: currentProjectPath,
+    });
+  }, [catalogPlanIds, currentProjectPath]);
 
   const handleExploreClick = useCallback(async (explore: ExploreItem) => {
     openAsset(
@@ -696,34 +802,86 @@ export function Dashboard() {
             ) : (
               <div className="jacques-dashboard" style={styles.scrollableList}>
                 <div style={styles.listContainer}>
-                  {filteredDocuments.plans.map((plan, i) => (
-                    <div
-                      key={i}
-                      className="jacques-list-row"
-                      style={styles.listRow}
-                      onClick={() => handlePlanClick(plan)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => { if (e.key === 'Enter') handlePlanClick(plan); }}
-                    >
-                      <div style={styles.listRowLeft}>
-                        <PlanIcon size={14} color={COLOR.plan} style={{ flexShrink: 0 }} />
-                        <span style={styles.listRowText}>{plan.title}</span>
+                  {filteredDocuments.plans.map((plan, i) => {
+                    // Find the best instance - prefer one with tasks
+                    const instances = (plan as typeof plan & { instances?: PlanInstance[] }).instances || [plan];
+                    let bestInstance = instances[0];
+                    let progress: SessionTaskSummary | undefined;
+
+                    // Look through all instances to find one with tasks
+                    for (const inst of instances) {
+                      const p = sessionTasksMap.get(inst.sessionId);
+                      if (p && p.total > 0) {
+                        progress = p;
+                        bestInstance = inst;
+                        break;
+                      }
+                    }
+
+                    // Fallback: use first instance's progress even if 0
+                    if (!progress) {
+                      progress = sessionTasksMap.get(bestInstance.sessionId);
+                    }
+
+                    const isComplete = progress && progress.total > 0 && progress.completed === progress.total;
+                    const hasProgress = progress && progress.total > 0;
+
+                    // Build the plan item to pass to click handler with best instance's data
+                    const clickPlan: PlanItem = {
+                      ...plan,
+                      sessionId: bestInstance.sessionId,
+                      messageIndex: bestInstance.messageIndex,
+                      source: bestInstance.source,
+                      filePath: bestInstance.filePath,
+                      agentId: bestInstance.agentId,
+                    };
+
+                    return (
+                      <div
+                        key={i}
+                        className="jacques-list-row"
+                        style={styles.listRow}
+                        onClick={() => handlePlanClick(clickPlan)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handlePlanClick(clickPlan); }}
+                      >
+                        <div style={styles.listRowLeft}>
+                          <PlanIcon size={14} color={COLOR.plan} style={{ flexShrink: 0 }} />
+                          <span style={styles.listRowText}>{plan.title}</span>
+                        </div>
+                        <div style={styles.listRowRight}>
+                          {/* Task progress: loader → X/Y or ✓ */}
+                          {progressLoading ? (
+                            <Loader
+                              size={12}
+                              color={PALETTE.muted}
+                              style={{ animation: 'spin 1s linear infinite' }}
+                            />
+                          ) : hasProgress && progress ? (
+                            <span style={styles.taskCount}>
+                              {isComplete && (
+                                <CheckCircle2 size={12} color={colors.success} style={{ marginRight: 4 }} />
+                              )}
+                              <span style={{ color: isComplete ? colors.success : PALETTE.muted }}>
+                                {progress.completed}/{progress.total}
+                              </span>
+                            </span>
+                          ) : null}
+                          <span style={{
+                            ...styles.sourceBadge,
+                            color: bestInstance.source === 'embedded' ? COLOR.plan : COLOR.agent,
+                            backgroundColor: bestInstance.source === 'embedded' ? COLOR.planBg : COLOR.agentBg,
+                          }}>
+                            {bestInstance.source}
+                          </span>
+                          {plan.sessionCount > 1 && (
+                            <span style={styles.listRowMeta}>{plan.sessionCount} ses</span>
+                          )}
+                        </div>
                       </div>
-                      <div style={styles.listRowRight}>
-                        <span style={{
-                          ...styles.sourceBadge,
-                          color: plan.source === 'embedded' ? COLOR.plan : COLOR.agent,
-                          backgroundColor: plan.source === 'embedded' ? COLOR.planBg : COLOR.agentBg,
-                        }}>
-                          {plan.source}
-                        </span>
-                        {plan.sessionCount > 1 && (
-                          <span style={styles.listRowMeta}>{plan.sessionCount} ses</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -804,6 +962,22 @@ export function Dashboard() {
       </div>
 
       {modalProps && <ContentModal {...modalProps} />}
+
+      {/* Plan Viewer Modal */}
+      {viewingPlan && (
+        <PlanViewer
+          plan={{
+            title: viewingPlan.title,
+            source: viewingPlan.source,
+            messageIndex: viewingPlan.messageIndex,
+            filePath: viewingPlan.filePath,
+            catalogId: viewingPlan.catalogId,
+          }}
+          sessionId={viewingPlan.sessionId}
+          projectPath={viewingPlan.projectPath}
+          onClose={() => setViewingPlan(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1017,6 +1191,15 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '10px',
     fontWeight: 600,
     letterSpacing: '0.02em',
+  },
+
+  // Task count for plans (X/Y format with optional checkmark)
+  taskCount: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    fontSize: '11px',
+    fontWeight: 500,
+    fontFamily: 'monospace',
   },
 
   // Session history scrollable — fits ~10 rows

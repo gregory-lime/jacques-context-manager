@@ -12,6 +12,7 @@ import { getDefaultConfig } from "./types.js";
 
 const JACQUES_DIR = join(homedir(), ".jacques");
 const JACQUES_CONFIG_PATH = join(JACQUES_DIR, "config.json");
+const DEFAULT_CLAUDE_DIR = join(homedir(), ".claude");
 
 /**
  * Read Jacques configuration from ~/.jacques/config.json
@@ -28,6 +29,7 @@ export function getJacquesConfig(): JacquesConfig {
     const defaults = getDefaultConfig();
     return {
       version: parsed.version || defaults.version,
+      rootPath: parsed.rootPath,
       sources: {
         obsidian: {
           enabled: parsed.sources?.obsidian?.enabled ?? defaults.sources.obsidian?.enabled ?? false,
@@ -231,4 +233,35 @@ export function disconnectNotion(): boolean {
   const config = getJacquesConfig();
   config.sources.notion = { enabled: false };
   return saveJacquesConfig(config);
+}
+
+// ===== Root Catalog Path Configuration =====
+
+/**
+ * Get the root catalog path (where Claude stores sessions)
+ * Returns configured path or default ~/.claude
+ */
+export function getRootCatalogPath(): string {
+  const config = getJacquesConfig();
+  return config.rootPath || DEFAULT_CLAUDE_DIR;
+}
+
+/**
+ * Set the root catalog path
+ */
+export function setRootCatalogPath(path: string): boolean {
+  const config = getJacquesConfig();
+  config.rootPath = path;
+  return saveJacquesConfig(config);
+}
+
+/**
+ * Detect the default catalog path and check if it exists
+ * Returns the default path and whether it was found
+ */
+export function detectDefaultCatalogPath(): { path: string; exists: boolean } {
+  return {
+    path: DEFAULT_CLAUDE_DIR,
+    exists: existsSync(DEFAULT_CLAUDE_DIR),
+  };
 }

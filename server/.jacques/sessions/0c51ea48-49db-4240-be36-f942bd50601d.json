@@ -1,0 +1,28 @@
+{
+  "id": "0c51ea48-49db-4240-be36-f942bd50601d",
+  "title": "Say hello in 3 words",
+  "projectPath": "/Users/gole/Desktop/jacques-context-manager/server",
+  "projectSlug": "server",
+  "startedAt": "2026-02-01T15:28:45.835Z",
+  "endedAt": "2026-02-01T15:28:48.244Z",
+  "durationMinutes": 0,
+  "userQuestions": [
+    "Say hello in 3 words"
+  ],
+  "filesModified": [],
+  "toolsUsed": [],
+  "technologies": [],
+  "messageCount": 2,
+  "toolCallCount": 0,
+  "tokens": {
+    "input": 27183,
+    "output": 6,
+    "cacheCreation": 0,
+    "cacheRead": 27180
+  },
+  "hasSubagents": false,
+  "planIds": [],
+  "subagentIds": [],
+  "jsonlModifiedAt": "2026-02-01T15:28:48.278Z",
+  "extractedAt": "2026-02-04T21:52:03.132Z"
+}

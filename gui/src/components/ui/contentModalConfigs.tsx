@@ -54,6 +54,26 @@ export function agentModalConfig(
   };
 }
 
+// ─── Context File Modal ──────────────────────────────────────
+
+export function contextFileModalConfig(
+  name: string,
+  source: string,
+  content: string,
+  description?: string,
+): ContentModalConfig {
+  return {
+    title: name,
+    badge: { label: 'Context', variant: 'agent' },
+    icon: <FileText size={16} />,
+    subtitle: description,
+    mode: 'markdown',
+    content,
+    footerInfo: source,
+    size: 'lg',
+  };
+}
+
 // ─── Web Search Modal ────────────────────────────────────────
 
 export function webSearchModalConfig(

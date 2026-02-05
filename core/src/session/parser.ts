@@ -227,6 +227,7 @@ export interface ParsedContent {
   // For tool results
   toolResultId?: string;
   toolResultContent?: string;
+  toolUseResult?: Record<string, unknown>; // Structured tool result data (e.g., task.id from TaskCreate)
   // For system events
   eventType?: string;
   eventData?: Record<string, unknown>;
@@ -418,13 +419,17 @@ export function categorizeEntry(entry: RawEntry, context?: ParseContext): Parsed
           ? messageContent
           : extractTextFromBlocks(messageContent as ContentBlock[] | undefined);
 
+      // Preserve toolUseResult for task tracking
+      const userEntryWithResult = entry as RawUserEntry & { toolUseResult?: Record<string, unknown> };
+      const toolUseResult = userEntryWithResult.toolUseResult;
+
       return {
         uuid,
         parentUuid,
         timestamp,
         sessionId,
         type: "user_message",
-        content: { text },
+        content: { text, toolUseResult },
       };
     }
 

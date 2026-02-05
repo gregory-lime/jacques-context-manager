@@ -14,6 +14,8 @@ The system uses a three-layer architecture:
 2. **Server** (Node.js/TypeScript) → manages sessions and broadcasts updates via WebSocket
 3. **Dashboard** (Ink/React) → displays real-time context usage
 
+**Platform Support**: macOS, Linux, Windows. See `docs/PLATFORM-SUPPORT.md` for terminal compatibility.
+
 **Current Status**: Phases 1-4, 6-12 complete. Phase 5 (context breakdown) pending.
 
 ## Key Commands
@@ -34,10 +36,33 @@ npm run dev:server         # Server dev mode (tsc --watch)
 npm run start:server       # Start Jacques server
 cd server && npm test      # Run server tests
 
-# Dashboard
+# Dashboard (Terminal TUI)
 npm run dev:dashboard      # Dashboard dev mode (tsc --watch)
 npm run start:dashboard    # Start terminal dashboard
+
+# GUI (Web Interface)
+npm run build:gui          # Build GUI (required before serving)
+npm run start:server       # Server serves GUI at http://localhost:4243
+npm run dev:gui            # OR: Run GUI dev server at http://localhost:5173 (hot reload)
 ```
+
+### Running the Web GUI
+
+The GUI can be accessed two ways:
+
+1. **Production mode** (served by server):
+   ```bash
+   npm run build:all        # Build everything including GUI
+   npm run start:server     # Start server - GUI at http://localhost:4243
+   ```
+
+2. **Development mode** (hot reload):
+   ```bash
+   npm run start:server     # Start server for API (ports 4242/4243)
+   npm run dev:gui          # Start GUI dev server at http://localhost:5173
+   ```
+
+**Important**: Always rebuild GUI (`npm run build:gui`) before using production mode if you made changes.
 
 ### Testing
 ```bash
@@ -92,6 +117,7 @@ jacques-context-manager/
 │   ├── catalog/         # Catalog extraction (pre-extract JSONL → .jacques/)
 │   ├── context/         # Project knowledge management (index.json)
 │   ├── handoff/         # Session handoff generation
+│   ├── plan/            # Plan progress tracking (task extraction, progress matching)
 │   ├── session/         # JSONL parsing, filtering, transformation
 │   └── sources/         # External source adapters (Obsidian, etc.)
 ├── server/src/          # Node.js server (TypeScript)
@@ -104,7 +130,12 @@ jacques-context-manager/
 │   ├── session/         # Session parsing and transformation
 │   ├── storage/         # File I/O utilities
 │   └── templates/       # Skill templates
-├── gui/                 # Web-based GUI (Electron/React)
+├── gui/src/             # Web GUI (React + Vite)
+│   ├── components/      # React components
+│   │   └── context/     # Context Catalog GUI components
+│   ├── hooks/           # Custom React hooks
+│   ├── pages/           # Route pages
+│   └── styles/          # Theme and styling
 ├── hooks/               # Claude Code/Cursor hooks (Python/Bash)
 ├── scripts/             # Setup and configuration scripts
 └── docs/                # Documentation
@@ -135,8 +166,10 @@ Before exploring source code, read the relevant `docs/` file listed below. The d
 | Work on hooks | `docs/HOOKS.md` | `hooks/` |
 | Parse JSONL transcripts | `docs/JSONL-FORMAT.md` | `core/src/session/` |
 | Work on plans/dedup | `docs/CORE.md` (Plan Identity section) | `core/src/catalog/extractor.ts`, `core/src/archive/plan-cataloger.ts` |
+| Work on plan progress | `docs/CORE.md` (Plan Progress section) | `core/src/plan/`, `server/src/http-api.ts` (tasks endpoint) |
 | Work on archive/search | `docs/CORE.md` (Archive Module section) | `core/src/archive/` |
 | Debug unexpected behavior | `docs/PITFALLS.md` | Relevant source files |
+| Work on process/terminal detection | `docs/PLATFORM-SUPPORT.md` | `server/src/process-scanner.ts` |
 | Build and test everything | Use commands in Key Commands above | `cd core && npx tsc && cd ../server && npx tsc && cd ../dashboard && npx tsc` |
 | Re-extract all catalogs | Start server, then `curl -X POST http://localhost:4243/api/catalog/extract -H 'Content-Type: application/json' -d '{"force": true}'` | Or use dashboard Settings → Re-extract All |
 
@@ -153,5 +186,6 @@ Architecture docs by component (read when working on that component):
 Reference docs (read when working on specific problems):
 
 - `docs/JSONL-FORMAT.md` — Claude Code JSONL entry types, structures, token data
+- `docs/PLATFORM-SUPPORT.md` — Cross-platform support: macOS, Linux, Windows; terminal detection
 - `docs/PHASES.md` — Development phase history and progress tracking
 - `docs/PITFALLS.md` — Common pitfalls, known bugs, and lessons learned

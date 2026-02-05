@@ -468,3 +468,35 @@ export type {
   BulkExtractResult,
   CatalogProgress,
 } from "./catalog/index.js";
+
+// Plan progress module (track completion status of plan items)
+export {
+  // Parser
+  parsePlanMarkdown,
+  normalizeText as normalizePlanText,
+  extractKeywords as extractPlanKeywords,
+  // Task extraction
+  extractTaskSignals,
+  getModifiedFiles,
+  // Matching
+  matchSignalsToPlanItems,
+  determineItemStatus,
+  isTrackableForProgress,
+  // Progress computation
+  computePlanProgress,
+  computePlanProgressSummary,
+  clearProgressCache,
+  clearAllProgressCache,
+} from "./plan/index.js";
+
+export type {
+  PlanItem,
+  ParsedPlan,
+  TaskSignal,
+  PlanItemMatch,
+  PlanItemStatus,
+  PlanItemProgress,
+  PlanProgressSummary,
+  PlanProgress,
+  PlanProgressListItem,
+} from "./plan/index.js";

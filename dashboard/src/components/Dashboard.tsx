@@ -13,7 +13,7 @@ import { Box, Text, useStdout } from "ink";
 import { MASCOT_ANSI } from "../assets/mascot-ansi.js";
 import type { VerticalMenuItem } from "./VerticalMenu.js";
 import { ProgressBar } from "./ProgressBar.js";
-import type { Session, ObsidianVault, ObsidianFile, FlatTreeItem, HandoffEntry, ArchiveProgress, ArchiveInitResult, ConversationManifest, ProjectStatistics, ProjectSessionItem, PlanEntry } from "@jacques/core";
+import type { Session, ObsidianVault, ObsidianFile, FlatTreeItem, HandoffEntry, ArchiveProgress, ArchiveInitResult, ConversationManifest, ProjectStatistics, ProjectSessionItem, PlanEntry, PlanProgress, PlanProgressListItem } from "@jacques/core";
 import { LoadContextView } from "./LoadContextView.js";
 import { SourceSelectionView } from "./SourceSelectionView.js";
 import type { SourceItem } from "./SourceSelectionView.js";
@@ -150,10 +150,13 @@ interface DashboardProps {
   projectDashboardSelectedIndex?: number;
   projectDashboardScrollOffset?: number;
   projectDashboardLoading?: boolean;
+  planProgressMap?: Map<string, PlanProgressListItem>;
   // Plan viewer props
   planViewerPlan?: PlanEntry | null;
   planViewerContent?: string;
   planViewerScrollOffset?: number;
+  planViewerProgress?: PlanProgress | null;
+  planViewerProgressLoading?: boolean;
   // Notification (displayed in bottom border)
   notification?: string | null;
 }
@@ -609,10 +612,13 @@ export function Dashboard({
   projectDashboardSelectedIndex = 0,
   projectDashboardScrollOffset = 0,
   projectDashboardLoading = false,
+  planProgressMap = new Map(),
   // Plan viewer props
   planViewerPlan = null,
   planViewerContent = "",
   planViewerScrollOffset = 0,
+  planViewerProgress = null,
+  planViewerProgressLoading = false,
   // Notification
   notification = null,
 }: DashboardProps): React.ReactElement {
@@ -1025,6 +1031,7 @@ export function Dashboard({
           selectedIndex={projectDashboardSelectedIndex}
           scrollOffset={projectDashboardScrollOffset}
           loading={projectDashboardLoading}
+          planProgress={planProgressMap}
         />
       </Box>
     );
@@ -1039,6 +1046,8 @@ export function Dashboard({
           terminalWidth={terminalWidth}
           terminalHeight={terminalHeight}
           scrollOffset={planViewerScrollOffset}
+          progress={planViewerProgress}
+          progressLoading={planViewerProgressLoading}
         />
       </Box>
     );

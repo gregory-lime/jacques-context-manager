@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, PenTool, Bot, Loader, X } from 'lucide-react';
+import { FileText, PenTool, Bot, Loader, X, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock } from 'lucide-react';
 import { colors } from '../../styles/theme';
 import type { PlanInfo } from './PlanNavigator';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -10,6 +10,26 @@ interface PlanViewerProps {
   /** Full project path for catalog API calls */
   projectPath?: string;
   onClose: () => void;
+}
+
+interface Task {
+  id: string;
+  subject: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  timestamp: string;
+}
+
+interface TaskSummary {
+  total: number;
+  completed: number;
+  inProgress: number;
+  pending: number;
+  percentage: number;
+}
+
+interface TasksResponse {
+  tasks: Task[];
+  summary: TaskSummary;
 }
 
 // When served from the same origin, use relative URL
@@ -36,6 +56,9 @@ export function PlanViewer({ plan, sessionId, projectPath, onClose }: PlanViewer
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskSummary, setTaskSummary] = useState<TaskSummary | null>(null);
+  const [stepsExpanded, setStepsExpanded] = useState(false);
 
   useEffect(() => {
     const fetchPlanContent = async () => {
@@ -77,7 +100,22 @@ export function PlanViewer({ plan, sessionId, projectPath, onClose }: PlanViewer
       }
     };
 
+    // Fetch tasks from the session (deduplicated, actual TaskCreate/TaskUpdate calls)
+    const fetchTasks = async () => {
+      try {
+        const response = await fetch(`${API_URL}/sessions/${sessionId}/tasks`);
+        if (response.ok) {
+          const data: TasksResponse = await response.json();
+          setTasks(data.tasks || []);
+          setTaskSummary(data.summary || null);
+        }
+      } catch {
+        // Ignore task fetch errors - tasks section just won't show
+      }
+    };
+
     fetchPlanContent();
+    fetchTasks();
   }, [sessionId, plan.messageIndex, plan.source, plan.agentId, plan.catalogId, projectPath]);
 
   // Handle keyboard escape
@@ -130,6 +168,68 @@ export function PlanViewer({ plan, sessionId, projectPath, onClose }: PlanViewer
             <X size={20} />
           </button>
         </div>
+
+        {/* Progress Bar - shows task completion from session */}
+        {taskSummary && taskSummary.total > 0 && (
+          <div style={styles.progressSection}>
+            <div style={styles.progressHeader}>
+              <CheckCircle2 size={14} color={taskSummary.percentage === 100 ? colors.success : colors.accent} />
+              <span style={styles.progressLabel}>Tasks</span>
+              <span style={{
+                ...styles.progressPercentage,
+                color: taskSummary.percentage === 100 ? colors.success : colors.accent,
+              }}>
+                {taskSummary.completed}/{taskSummary.total} ({taskSummary.percentage}%)
+              </span>
+            </div>
+            <div style={styles.progressTrack}>
+              <div style={{
+                ...styles.progressFill,
+                width: `${taskSummary.percentage}%`,
+                backgroundColor: taskSummary.percentage === 100 ? colors.success : colors.accent,
+              }} />
+            </div>
+
+            {/* Collapsible Task List */}
+            {tasks.length > 0 && (
+              <div style={styles.stepsContainer}>
+                <button
+                  style={styles.stepsToggle}
+                  onClick={() => setStepsExpanded(!stepsExpanded)}
+                  type="button"
+                >
+                  {stepsExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  <span>Show tasks ({tasks.length})</span>
+                </button>
+
+                {stepsExpanded && (
+                  <div style={styles.stepsList}>
+                    {tasks.map((task) => (
+                      <div key={task.id} style={styles.stepItem}>
+                        <span style={styles.stepCheckbox}>
+                          {task.status === 'completed' ? (
+                            <CheckCircle2 size={14} color={colors.success} />
+                          ) : task.status === 'in_progress' ? (
+                            <Clock size={14} color={colors.warning} />
+                          ) : (
+                            <Circle size={14} color={colors.textMuted} />
+                          )}
+                        </span>
+                        <span style={{
+                          ...styles.stepText,
+                          textDecoration: task.status === 'completed' ? 'line-through' : 'none',
+                          color: task.status === 'completed' ? colors.textMuted : colors.textSecondary,
+                        }}>
+                          {task.subject}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Content */}
         <div style={styles.content}>
@@ -234,6 +334,81 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     borderRadius: '4px',
     transition: 'color 150ms ease',
+  },
+  progressSection: {
+    padding: '12px 20px',
+    borderBottom: `1px solid ${colors.borderSubtle}`,
+    backgroundColor: colors.bgPrimary,
+  },
+  progressHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginBottom: '8px',
+  },
+  progressLabel: {
+    fontSize: '12px',
+    fontWeight: 500,
+    color: colors.textSecondary,
+  },
+  progressPercentage: {
+    fontSize: '12px',
+    fontWeight: 600,
+    fontFamily: 'monospace',
+    marginLeft: 'auto',
+  },
+  progressTrack: {
+    width: '100%',
+    height: '6px',
+    backgroundColor: colors.bgInput,
+    borderRadius: '3px',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: '3px',
+    transition: 'width 300ms ease',
+  },
+  stepsContainer: {
+    marginTop: '12px',
+  },
+  stepsToggle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '6px 8px',
+    fontSize: '12px',
+    fontWeight: 500,
+    color: colors.textSecondary,
+    backgroundColor: 'transparent',
+    border: `1px solid ${colors.borderSubtle}`,
+    borderRadius: '4px',
+    cursor: 'pointer',
+    transition: 'all 150ms ease',
+  },
+  stepsList: {
+    marginTop: '8px',
+    maxHeight: '200px',
+    overflowY: 'auto' as const,
+    border: `1px solid ${colors.borderSubtle}`,
+    borderRadius: '6px',
+    backgroundColor: colors.bgSecondary,
+  },
+  stepItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '8px 12px',
+    borderBottom: `1px solid ${colors.borderSubtle}`,
+    fontSize: '12px',
+  },
+  stepCheckbox: {
+    display: 'inline-flex',
+    flexShrink: 0,
+  },
+  stepText: {
+    flex: 1,
+    lineHeight: 1.4,
   },
   content: {
     flex: 1,

@@ -19,6 +19,7 @@ import type {
 } from './types.js';
 import type { Logger } from './logging/logger-factory.js';
 import { createLogger } from './logging/logger-factory.js';
+import type { DetectedSession } from './process-scanner.js';
 
 export interface SessionRegistryOptions {
   /** Suppress console output */
@@ -53,6 +54,71 @@ export class SessionRegistry {
   private get warn() { return this.logger.warn.bind(this.logger); }
 
   /**
+   * Register a session discovered at startup from process scanning
+   * Creates a session with DISCOVERED: terminal key prefix
+   * @param discovered Detected session from process scanner
+   * @returns The created session, or existing session if already registered
+   */
+  registerDiscoveredSession(discovered: DetectedSession): Session {
+    // Check if session already exists (skip if registered via hooks)
+    const existing = this.sessions.get(discovered.sessionId);
+    if (existing) {
+      this.log(`[Registry] Session already registered, skipping discovery: ${discovered.sessionId}`);
+      return existing;
+    }
+
+    // Build terminal key based on available info
+    // Priority: terminalSessionId > tty > pid
+    let terminalKey: string;
+    if (discovered.terminalSessionId) {
+      // Use terminal-specific session ID (WT_SESSION, ITERM_SESSION_ID, etc.)
+      const prefix = discovered.terminalType?.replace(/\s+/g, '') || 'TERM';
+      terminalKey = `DISCOVERED:${prefix}:${discovered.terminalSessionId}`;
+    } else if (discovered.tty && discovered.tty !== '?') {
+      terminalKey = `DISCOVERED:TTY:${discovered.tty}:${discovered.pid}`;
+    } else {
+      terminalKey = `DISCOVERED:PID:${discovered.pid}`;
+    }
+
+    const session: Session = {
+      session_id: discovered.sessionId,
+      source: 'claude_code',
+      session_title: discovered.title || `Session in ${discovered.project}`,
+      transcript_path: discovered.transcriptPath,
+      cwd: discovered.cwd,
+      project: discovered.project,
+      model: null, // Unknown until hooks fire
+      workspace: null,
+      terminal: null, // Not available from process scan
+      terminal_key: terminalKey,
+      status: 'active',
+      last_activity: discovered.lastActivity,
+      registered_at: Date.now(),
+      context_metrics: discovered.contextMetrics,
+      autocompact: null, // Unknown until hooks fire
+      git_branch: discovered.gitBranch,
+      git_worktree: null,
+      git_repo_root: null,
+    };
+
+    this.sessions.set(discovered.sessionId, session);
+
+    // Auto-focus if this is the only session
+    if (this.sessions.size === 1) {
+      this.focusedSessionId = discovered.sessionId;
+    }
+
+    const contextInfo = session.context_metrics
+      ? `~${session.context_metrics.used_percentage.toFixed(1)}%`
+      : 'unknown';
+    const terminalInfo = discovered.terminalType || 'Unknown terminal';
+    this.log(`[Registry] Discovered session: ${discovered.sessionId} [${discovered.project}] - ${contextInfo} (${terminalInfo})`);
+    this.log(`[Registry] Terminal key: ${session.terminal_key}`);
+
+    return session;
+  }
+
+  /**
    * Register a new session or update an existing auto-registered one
    * @param event SessionStart event data
    * @returns The created/updated session
@@ -63,11 +129,14 @@ export class SessionRegistry {
     const rawSource = event.source || 'claude_code';
     const source: SessionSource = ['startup', 'clear', 'resume'].includes(rawSource) ? 'claude_code' : rawSource as SessionSource;
 
-    // Check if session was already auto-registered from context_update
+    // Check if session was already auto-registered from context_update or discovered at startup
     const existing = this.sessions.get(event.session_id);
     if (existing) {
+      // Check if upgrading from a discovered session
+      const wasDiscovered = existing.terminal_key?.startsWith('DISCOVERED:');
+
       // Update the existing session with terminal identity info
-      this.log(`[Registry] Updating auto-registered session with terminal info: ${event.session_id}`);
+      this.log(`[Registry] Updating ${wasDiscovered ? 'discovered' : 'auto-registered'} session with terminal info: ${event.session_id}`);
       existing.terminal = event.terminal;
       existing.terminal_key = event.terminal_key;
       existing.session_title = event.session_title || existing.session_title;
