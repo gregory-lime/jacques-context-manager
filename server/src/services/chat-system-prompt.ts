@@ -20,7 +20,7 @@ export async function buildChatSystemPrompt(projectPath: string): Promise<string
   try {
     index = await readProjectIndex(projectPath);
   } catch {
-    index = { version: '1.0.0', updatedAt: '', context: [], sessions: [], plans: [] };
+    index = { version: '1.0.0', updatedAt: '', context: [], sessions: [], plans: [], subagents: [] };
   }
 
   const parts: string[] = [];
