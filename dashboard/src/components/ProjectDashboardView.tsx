@@ -15,7 +15,7 @@
 
 import React from "react";
 import { Box, Text } from "ink";
-import type { ProjectStatistics, ProjectSessionItem, PlanEntry } from "@jacques/core";
+import type { ProjectStatistics, ProjectSessionItem, PlanEntry, PlanProgressListItem } from "@jacques/core";
 import {
   SCENE_FULL,
   SCENE_COMPACT,
@@ -52,6 +52,8 @@ export interface ProjectDashboardViewProps {
   selectedIndex: number;
   scrollOffset: number;
   loading?: boolean;
+  /** Plan progress map: planId -> progress info */
+  planProgress?: Map<string, PlanProgressListItem>;
 }
 
 /**
@@ -66,6 +68,7 @@ function FullLayout({
   activeSection,
   selectedIndex,
   scrollOffset,
+  planProgress,
 }: Omit<ProjectDashboardViewProps, "terminalHeight" | "loading">): React.ReactElement {
   // Left side: Scene + Sessions/Plans
   // Right side: Statistics
@@ -132,6 +135,7 @@ function FullLayout({
               selectedIndex={selectedIndex}
               scrollOffset={scrollOffset}
               maxWidth={leftWidth - 2}
+              planProgress={planProgress}
             />
           </Box>
         </Box>
@@ -172,6 +176,7 @@ function CompactLayout({
   activeSection,
   selectedIndex,
   scrollOffset,
+  planProgress,
 }: Omit<ProjectDashboardViewProps, "terminalHeight" | "loading">): React.ReactElement {
   return (
     <Box flexDirection="column" width={terminalWidth}>
@@ -228,6 +233,7 @@ function CompactLayout({
             selectedIndex={selectedIndex}
             scrollOffset={scrollOffset}
             maxWidth={Math.floor(terminalWidth * 0.5)}
+            planProgress={planProgress}
           />
         </Box>
 
@@ -263,6 +269,7 @@ function MinimalLayout({
   activeSection,
   selectedIndex,
   scrollOffset,
+  planProgress,
 }: Omit<ProjectDashboardViewProps, "terminalHeight" | "loading">): React.ReactElement {
   return (
     <Box flexDirection="column" width={terminalWidth}>
@@ -303,6 +310,7 @@ function MinimalLayout({
         selectedIndex={selectedIndex}
         scrollOffset={scrollOffset}
         maxWidth={terminalWidth - 2}
+        planProgress={planProgress}
       />
 
       <Box marginTop={1}>
@@ -398,7 +406,11 @@ interface PlansListProps {
   selectedIndex: number;
   scrollOffset: number;
   maxWidth: number;
+  planProgress?: Map<string, PlanProgressListItem>;
 }
+
+/** Width reserved for progress display: "████░░░░ 100%" = ~14 chars */
+const PROGRESS_DISPLAY_WIDTH = 14;
 
 function PlansList({
   plans,
@@ -406,6 +418,7 @@ function PlansList({
   selectedIndex,
   scrollOffset,
   maxWidth,
+  planProgress,
 }: PlansListProps): React.ReactElement {
   const visiblePlans = plans.slice(scrollOffset, scrollOffset + VISIBLE_PLANS);
   const hasMore = plans.length > scrollOffset + VISIBLE_PLANS;
@@ -414,18 +427,46 @@ function PlansList({
     return <Text color={MUTED_TEXT}>No plans yet</Text>;
   }
 
+  // Calculate title width (reserve space for progress if available)
+  const hasProgress = planProgress && planProgress.size > 0;
+  const titleWidth = hasProgress ? maxWidth - 4 - PROGRESS_DISPLAY_WIDTH : maxWidth - 4;
+
   return (
     <Box flexDirection="column">
       {visiblePlans.map((plan, i) => {
         const globalIndex = scrollOffset + i;
         const isSelected = isActive && globalIndex === selectedIndex;
+        const progress = planProgress?.get(plan.id);
+
+        // Progress bar display
+        let progressDisplay = "";
+        let progressColor = MUTED_TEXT;
+        if (progress && !progress.loading) {
+          const pct = progress.percentage;
+          progressDisplay = `${progressBar(pct, 6)} ${pad(pct.toString(), 3, "left")}%`;
+          if (pct === 100) {
+            progressColor = GREEN;
+          } else if (pct > 0) {
+            progressColor = ACCENT_COLOR;
+          }
+        } else if (progress?.loading) {
+          progressDisplay = "...";
+        }
 
         return (
           <Text key={plan.id} color={isSelected ? "white" : MUTED_TEXT}>
             {isSelected ? "> " : "  "}
             <Text color={isSelected ? "white" : undefined}>
-              {truncate(plan.title, maxWidth - 4)}
+              {truncate(plan.title, titleWidth)}
             </Text>
+            {hasProgress && (
+              <>
+                {"  "}
+                <Text color={isSelected ? "white" : progressColor}>
+                  {progressDisplay}
+                </Text>
+              </>
+            )}
           </Text>
         );
       })}

@@ -33,6 +33,8 @@ export {
   // Plan Catalog API
   getProjectPlanCatalog,
   getPlanCatalogContent,
+  // Session Tasks API
+  getSessionTasks,
 } from './config';
 
 export type {
@@ -65,4 +67,8 @@ export type {
   // Plan Catalog types
   PlanCatalogEntry,
   PlanCatalogContent,
+  // Session Tasks types
+  SessionTask,
+  SessionTaskSummary,
+  SessionTasksResponse,
 } from './config';

@@ -73,6 +73,9 @@ import {
   buildProjectSessionList,
   getProjectPlans,
   readLocalPlanContent,
+  // Plan progress
+  computePlanProgress,
+  computePlanProgressSummary,
 } from "@jacques/core";
 import type {
   SessionFile,
@@ -90,6 +93,8 @@ import type {
   ProjectStatistics,
   ProjectSessionItem,
   PlanEntry,
+  PlanProgress,
+  PlanProgressListItem,
 } from "@jacques/core";
 import { buildSourceItems } from "./SourceSelectionView.js";
 import type { SourceItem } from "./SourceSelectionView.js";
@@ -268,6 +273,11 @@ export function App(): React.ReactElement {
   const [planViewerPlan, setPlanViewerPlan] = useState<PlanEntry | null>(null);
   const [planViewerContent, setPlanViewerContent] = useState<string>("");
   const [planViewerScrollOffset, setPlanViewerScrollOffset] = useState<number>(0);
+
+  // Plan progress state
+  const [planProgressMap, setPlanProgressMap] = useState<Map<string, PlanProgressListItem>>(new Map());
+  const [planViewerProgress, setPlanViewerProgress] = useState<PlanProgress | null>(null);
+  const [planViewerProgressLoading, setPlanViewerProgressLoading] = useState<boolean>(false);
 
   // Get focused session
   const focusedSession = sessions.find(
@@ -1201,11 +1211,29 @@ export function App(): React.ReactElement {
             aggregateProjectStatistics(cwd, sessions),
             buildProjectSessionList(cwd, sessions, focusedSessionId),
             getProjectPlans(cwd),
-          ]).then(([stats, sessionList, plans]) => {
+          ]).then(async ([stats, sessionList, plans]) => {
             setProjectDashboardStats(stats);
             setProjectDashboardSessions(sessionList);
             setProjectDashboardPlans(plans);
             setProjectDashboardLoading(false);
+
+            // Compute plan progress asynchronously (don't block dashboard load)
+            setPlanProgressMap(new Map()); // Reset progress map
+            for (const plan of plans) {
+              try {
+                const content = await readLocalPlanContent(cwd, plan);
+                if (content) {
+                  const summary = await computePlanProgressSummary(plan, content, cwd);
+                  setPlanProgressMap((prev) => {
+                    const next = new Map(prev);
+                    next.set(plan.id, summary);
+                    return next;
+                  });
+                }
+              } catch {
+                // Skip failed progress computation for individual plans
+              }
+            }
           }).catch((err) => {
             showNotification(`Failed to load dashboard: ${err instanceof Error ? err.message : String(err)}`);
             setProjectDashboardLoading(false);
@@ -1951,13 +1979,28 @@ export function App(): React.ReactElement {
             const cwd = focusedSession.workspace?.project_dir || focusedSession.cwd;
             setPlanViewerPlan(selectedPlan);
             setPlanViewerScrollOffset(0);
+            setPlanViewerProgress(null);
+            setPlanViewerProgressLoading(true);
             setCurrentView("plan-viewer");
 
-            // Load plan content
-            readLocalPlanContent(cwd, selectedPlan).then((content) => {
-              setPlanViewerContent(content || "Failed to load plan content");
+            // Load plan content and compute progress
+            readLocalPlanContent(cwd, selectedPlan).then(async (content) => {
+              const planContent = content || "Failed to load plan content";
+              setPlanViewerContent(planContent);
+
+              // Compute full progress for detailed view
+              if (content) {
+                try {
+                  const progress = await computePlanProgress(selectedPlan, content, cwd);
+                  setPlanViewerProgress(progress);
+                } catch {
+                  // Progress computation failed - that's okay
+                }
+              }
+              setPlanViewerProgressLoading(false);
             }).catch(() => {
               setPlanViewerContent("Failed to load plan content");
+              setPlanViewerProgressLoading(false);
             });
           }
           return;
@@ -2101,10 +2144,13 @@ export function App(): React.ReactElement {
         projectDashboardSelectedIndex={projectDashboardSelectedIndex}
         projectDashboardScrollOffset={projectDashboardScrollOffset}
         projectDashboardLoading={projectDashboardLoading}
+        planProgressMap={planProgressMap}
         // Plan viewer props
         planViewerPlan={planViewerPlan}
         planViewerContent={planViewerContent}
         planViewerScrollOffset={planViewerScrollOffset}
+        planViewerProgress={planViewerProgress}
+        planViewerProgressLoading={planViewerProgressLoading}
         // Notification (displayed in bottom border)
         notification={notification}
       />

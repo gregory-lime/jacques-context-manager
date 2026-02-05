@@ -34,10 +34,33 @@ npm run dev:server         # Server dev mode (tsc --watch)
 npm run start:server       # Start Jacques server
 cd server && npm test      # Run server tests
 
-# Dashboard
+# Dashboard (Terminal TUI)
 npm run dev:dashboard      # Dashboard dev mode (tsc --watch)
 npm run start:dashboard    # Start terminal dashboard
+
+# GUI (Web Interface)
+npm run build:gui          # Build GUI (required before serving)
+npm run start:server       # Server serves GUI at http://localhost:4243
+npm run dev:gui            # OR: Run GUI dev server at http://localhost:5173 (hot reload)
 ```
+
+### Running the Web GUI
+
+The GUI can be accessed two ways:
+
+1. **Production mode** (served by server):
+   ```bash
+   npm run build:all        # Build everything including GUI
+   npm run start:server     # Start server - GUI at http://localhost:4243
+   ```
+
+2. **Development mode** (hot reload):
+   ```bash
+   npm run start:server     # Start server for API (ports 4242/4243)
+   npm run dev:gui          # Start GUI dev server at http://localhost:5173
+   ```
+
+**Important**: Always rebuild GUI (`npm run build:gui`) before using production mode if you made changes.
 
 ### Testing
 ```bash
@@ -92,6 +115,7 @@ jacques-context-manager/
 │   ├── catalog/         # Catalog extraction (pre-extract JSONL → .jacques/)
 │   ├── context/         # Project knowledge management (index.json)
 │   ├── handoff/         # Session handoff generation
+│   ├── plan/            # Plan progress tracking (task extraction, progress matching)
 │   ├── session/         # JSONL parsing, filtering, transformation
 │   └── sources/         # External source adapters (Obsidian, etc.)
 ├── server/src/          # Node.js server (TypeScript)
@@ -135,6 +159,7 @@ Before exploring source code, read the relevant `docs/` file listed below. The d
 | Work on hooks | `docs/HOOKS.md` | `hooks/` |
 | Parse JSONL transcripts | `docs/JSONL-FORMAT.md` | `core/src/session/` |
 | Work on plans/dedup | `docs/CORE.md` (Plan Identity section) | `core/src/catalog/extractor.ts`, `core/src/archive/plan-cataloger.ts` |
+| Work on plan progress | `docs/CORE.md` (Plan Progress section) | `core/src/plan/`, `server/src/http-api.ts` (tasks endpoint) |
 | Work on archive/search | `docs/CORE.md` (Archive Module section) | `core/src/archive/` |
 | Debug unexpected behavior | `docs/PITFALLS.md` | Relevant source files |
 | Build and test everything | Use commands in Key Commands above | `cd core && npx tsc && cd ../server && npx tsc && cd ../dashboard && npx tsc` |
