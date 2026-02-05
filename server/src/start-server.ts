@@ -26,6 +26,8 @@ import type {
   GetHandoffContextRequest,
   FocusTerminalRequest,
   FocusTerminalResultMessage,
+  TileWindowsRequest,
+  TileWindowsResultMessage,
   UpdateNotificationSettingsRequest,
   NotificationSettingsMessage,
 } from './types.js';
@@ -175,6 +177,10 @@ export async function startEmbeddedServer(
 
       case 'focus_terminal':
         handleFocusTerminal(ws, message as FocusTerminalRequest);
+        break;
+
+      case 'tile_windows':
+        handleTileWindows(ws, message as TileWindowsRequest);
         break;
 
       case 'update_notification_settings':
@@ -372,6 +378,128 @@ export async function startEmbeddedServer(
       logger.log(`Terminal focused via ${result.method} for session ${request.session_id}`);
     } else {
       logger.log(`Terminal focus failed (${result.method}): ${result.error}`);
+    }
+  }
+
+  /**
+   * Handle tile windows request
+   * Tiles multiple terminal windows side-by-side or in a grid
+   */
+  async function handleTileWindows(
+    ws: WebSocket,
+    request: TileWindowsRequest
+  ): Promise<void> {
+    const { session_ids, layout: requestedLayout, display_id } = request;
+
+    if (!session_ids || session_ids.length === 0) {
+      const response: TileWindowsResultMessage = {
+        type: 'tile_windows_result',
+        success: false,
+        positioned: 0,
+        total: 0,
+        layout: 'side-by-side',
+        errors: ['No session IDs provided'],
+      };
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(response));
+      }
+      return;
+    }
+
+    // Get terminal keys for the requested sessions
+    const terminalKeys: string[] = [];
+    const errors: string[] = [];
+
+    for (const sessionId of session_ids) {
+      const session = registry.getSession(sessionId);
+      if (!session) {
+        errors.push(`Session not found: ${sessionId}`);
+        continue;
+      }
+      if (!session.terminal_key) {
+        errors.push(`Session has no terminal key: ${sessionId}`);
+        continue;
+      }
+      terminalKeys.push(session.terminal_key);
+    }
+
+    if (terminalKeys.length === 0) {
+      const response: TileWindowsResultMessage = {
+        type: 'tile_windows_result',
+        success: false,
+        positioned: 0,
+        total: session_ids.length,
+        layout: requestedLayout || 'side-by-side',
+        errors,
+      };
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(response));
+      }
+      return;
+    }
+
+    try {
+      const { createWindowManager, isWindowManagementSupported, suggestLayout } = await import('./window-manager/index.js');
+
+      if (!isWindowManagementSupported()) {
+        const response: TileWindowsResultMessage = {
+          type: 'tile_windows_result',
+          success: false,
+          positioned: 0,
+          total: terminalKeys.length,
+          layout: requestedLayout || 'side-by-side',
+          errors: ['Window management not supported on this platform'],
+        };
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify(response));
+        }
+        return;
+      }
+
+      const manager = createWindowManager();
+      const layout = requestedLayout || suggestLayout(terminalKeys.length);
+
+      // Get target display if specified
+      let targetDisplay;
+      if (display_id) {
+        const displays = await manager.getDisplays();
+        targetDisplay = displays.find(d => d.id === display_id);
+      }
+
+      logger.log(`Tiling ${terminalKeys.length} windows with layout: ${layout}`);
+      const result = await manager.tileWindows(terminalKeys, layout, targetDisplay);
+
+      const response: TileWindowsResultMessage = {
+        type: 'tile_windows_result',
+        success: result.success,
+        positioned: result.positioned,
+        total: result.total,
+        layout,
+        errors: [...errors, ...(result.errors || [])].length > 0 ? [...errors, ...(result.errors || [])] : undefined,
+      };
+
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(response));
+      }
+
+      if (result.success) {
+        logger.log(`Tiled ${result.positioned}/${result.total} windows`);
+      } else {
+        logger.log(`Partial tile: ${result.positioned}/${result.total} windows positioned`);
+      }
+    } catch (err) {
+      logger.error(`Failed to tile windows: ${err}`);
+      const response: TileWindowsResultMessage = {
+        type: 'tile_windows_result',
+        success: false,
+        positioned: 0,
+        total: terminalKeys.length,
+        layout: requestedLayout || 'side-by-side',
+        errors: [err instanceof Error ? err.message : String(err)],
+      };
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(response));
+      }
     }
   }
 

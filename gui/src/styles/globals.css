@@ -365,3 +365,132 @@ button {
   animation: shimmer 1.5s ease-in-out infinite;
   border-radius: 8px;
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Worktree Sessions View Styles
+   ───────────────────────────────────────────────────────────── */
+
+/* Worktree row — horizontal flex with responsive wrap */
+.jacques-worktree-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  width: 100%;
+}
+
+/* Worktree group animation */
+.jacques-worktree-group {
+  opacity: 0;
+  animation: worktree-slide-in 0.4s ease-out forwards;
+}
+
+@keyframes worktree-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Title hover-scroll marquee effect */
+@keyframes title-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  10% {
+    transform: translateX(0);
+  }
+  90% {
+    transform: translateX(calc(-100% + 200px));
+  }
+  100% {
+    transform: translateX(calc(-100% + 200px));
+  }
+}
+
+.jacques-title-scroll {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* Compact session card hover effects */
+.jacques-compact-card {
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+
+.jacques-compact-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  border-color: #4a4a4a;
+}
+
+.jacques-compact-card:active {
+  transform: translateY(0);
+}
+
+/* Card hint reveal on hover */
+.jacques-card-hint {
+  opacity: 0;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+
+.jacques-compact-card:hover .jacques-card-hint {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Worktree connector pulse for active state */
+@keyframes connector-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Responsive behavior for worktree cards */
+@media (min-width: 1400px) {
+  .jacques-worktree-row {
+    gap: 20px;
+  }
+}
+
+@media (max-width: 900px) {
+  .jacques-worktree-row {
+    gap: 12px;
+  }
+}
+
+@media (max-width: 600px) {
+  .jacques-worktree-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .jacques-compact-card {
+    max-width: none !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Infinite Marquee for Plan Titles
+   ───────────────────────────────────────────────────────────── */
+
+@keyframes marquee-infinite {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.jacques-marquee-infinite {
+  display: inline-flex;
+  gap: 3em;
+  animation: marquee-infinite 12s linear infinite;
+}
+
+.jacques-marquee-infinite:hover {
+  animation-play-state: running;
+}

@@ -551,6 +551,7 @@ export type ServerMessage =
   | ClaudeOperationMessage
   | ApiLogMessage
   | FocusTerminalResultMessage
+  | TileWindowsResultMessage
   | NotificationSettingsMessage
   | NotificationFiredMessage;
 
@@ -597,6 +598,28 @@ export interface FocusTerminalRequest {
 }
 
 /**
+ * Client request to tile multiple terminal windows
+ */
+export interface TileWindowsRequest {
+  type: 'tile_windows';
+  session_ids: string[];
+  layout?: 'side-by-side' | 'thirds' | '2x2';
+  display_id?: string;
+}
+
+/**
+ * Tile windows result message
+ */
+export interface TileWindowsResultMessage {
+  type: 'tile_windows_result';
+  success: boolean;
+  positioned: number;
+  total: number;
+  layout: 'side-by-side' | 'thirds' | '2x2';
+  errors?: string[];
+}
+
+/**
  * Union type for all client → server messages
  */
 export type ClientMessage =
@@ -605,6 +628,7 @@ export type ClientMessage =
   | ToggleAutoCompactRequest
   | GetHandoffContextRequest
   | FocusTerminalRequest
+  | TileWindowsRequest
   | UpdateNotificationSettingsRequest;
 
 // ============================================================

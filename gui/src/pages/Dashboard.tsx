@@ -15,10 +15,10 @@ import { listSessionsByProject, getSessionPlanContent, getSubagentFromSession, g
 import { colors } from '../styles/theme';
 import { SectionHeader, Badge, ContentModal } from '../components/ui';
 import { planModalConfig, agentModalConfig, webSearchModalConfig } from '../components/ui/contentModalConfigs';
-import { SessionCard } from '../components/SessionCard';
 import { ActiveSessionViewer } from '../components/ActiveSessionViewer';
+import { WorktreeSessionsView } from '../components/WorktreeSessionsView';
 import { PlanIcon, AgentIcon, StatusDot } from '../components/Icons';
-import { Globe, Terminal, GitBranch } from 'lucide-react';
+import { Globe, GitBranch } from 'lucide-react';
 import type { Session } from '../types';
 
 // ─── Color Constants ─────────────────────────────────────────
@@ -360,7 +360,7 @@ function SkeletonListRow() {
 // ─── Main Component ──────────────────────────────────────────
 
 export function Dashboard() {
-  const { sessions: allLiveSessions, focusedSessionId, connected } = useJacquesClient();
+  const { sessions: allLiveSessions, focusedSessionId, connected, focusTerminal, tileWindows } = useJacquesClient();
   const { selectedProject, filterSessions } = useProjectScope();
   const { state, openSession } = useOpenSessions();
   const [savedSessionsByProject, setSavedSessionsByProject] = useState<Record<string, SessionEntry[]>>({});
@@ -492,6 +492,14 @@ export function Dashboard() {
     });
   };
 
+  const handleFocusSession = useCallback((sessionId: string) => {
+    focusTerminal(sessionId);
+  }, [focusTerminal]);
+
+  const handleTileSessions = useCallback((sessionIds: string[], layout?: 'side-by-side' | 'thirds' | '2x2') => {
+    tileWindows(sessionIds, layout);
+  }, [tileWindows]);
+
   const handleHistorySessionClick = (item: SessionListItem) => {
     openSession({
       id: item.id,
@@ -543,7 +551,7 @@ export function Dashboard() {
         {/* ── Error ── */}
         {error && <div style={{ ...styles.errorBanner, flexShrink: 0 }}>{error}</div>}
 
-        {/* ── Active Sessions (grid) ── */}
+        {/* ── Active Sessions (worktree view) ── */}
         <section className="jacques-animate-in" style={{ flexShrink: 0 }}>
           <SectionHeader
             title={`ACTIVE SESSIONS (${filteredLiveSessions.length})`}
@@ -556,25 +564,15 @@ export function Dashboard() {
               <SkeletonSessionCard />
               <SkeletonSessionCard />
             </div>
-          ) : filteredLiveSessions.length === 0 ? (
-            <div style={styles.emptyActive}>
-              <Terminal size={20} color={PALETTE.textDim} style={{ opacity: 0.4 }} />
-              <span style={{ color: PALETTE.textDim, fontSize: '13px' }}>No active sessions</span>
-            </div>
           ) : (
-            <div className="jacques-card-grid">
-              {filteredLiveSessions.map((session) => (
-                <SessionCard
-                  key={session.session_id}
-                  session={session}
-                  isFocused={session.session_id === focusedSessionId}
-                  badges={badges.get(session.session_id)}
-                  onClick={() => handleActiveSessionClick(session)}
-                  onPlanClick={() => handleActiveSessionClick(session)}
-                  onAgentClick={() => handleActiveSessionClick(session)}
-                />
-              ))}
-            </div>
+            <WorktreeSessionsView
+              sessions={filteredLiveSessions}
+              focusedSessionId={focusedSessionId}
+              badges={badges}
+              onSessionClick={handleActiveSessionClick}
+              onFocusSession={handleFocusSession}
+              onTileSessions={handleTileSessions}
+            />
           )}
         </section>
 
@@ -890,19 +888,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '4px',
     fontSize: '12px',
     color: PALETTE.danger,
-  },
-
-  // Active sessions
-  emptyActive: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '10px',
-    padding: '24px',
-    backgroundColor: PALETTE.bgCard,
-    borderRadius: '8px',
-    border: `1px solid ${PALETTE.textDim}20`,
-    minHeight: '160px',
   },
 
   // Session history

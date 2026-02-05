@@ -148,6 +148,18 @@ class BrowserJacquesClient {
     this.send({ type: 'toggle_autocompact' });
   }
 
+  focusTerminal(sessionId: string) {
+    this.send({ type: 'focus_terminal', session_id: sessionId });
+  }
+
+  tileWindows(sessionIds: string[], layout?: 'side-by-side' | 'thirds' | '2x2') {
+    this.send({
+      type: 'tile_windows',
+      session_ids: sessionIds,
+      layout,
+    });
+  }
+
   private send(data: unknown) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data));
@@ -176,6 +188,8 @@ export interface UseJacquesClientReturn extends JacquesState {
     action: 'smart_compact' | 'new_session' | 'save_snapshot'
   ) => void;
   toggleAutoCompact: () => void;
+  focusTerminal: (sessionId: string) => void;
+  tileWindows: (sessionIds: string[], layout?: 'side-by-side' | 'thirds' | '2x2') => void;
 }
 
 const MAX_LOGS = 100;
@@ -343,6 +357,14 @@ export function useJacquesClient(): UseJacquesClientReturn {
     client?.toggleAutoCompact();
   }, [client]);
 
+  const focusTerminal = useCallback((sessionId: string) => {
+    client?.focusTerminal(sessionId);
+  }, [client]);
+
+  const tileWindows = useCallback((sessionIds: string[], layout?: 'side-by-side' | 'thirds' | '2x2') => {
+    client?.tileWindows(sessionIds, layout);
+  }, [client]);
+
   return {
     sessions,
     focusedSessionId,
@@ -354,5 +376,7 @@ export function useJacquesClient(): UseJacquesClientReturn {
     selectSession,
     triggerAction,
     toggleAutoCompact,
+    focusTerminal,
+    tileWindows,
   };
 }

@@ -1540,6 +1540,137 @@ export async function createHttpApi(options: HttpApiOptions = {}): Promise<HttpA
       return;
     }
 
+    // === Window Tiling API Routes ===
+
+    // Route: GET /api/tile/displays
+    // Get available displays for tiling
+    if (method === 'GET' && url === '/api/tile/displays') {
+      try {
+        const { createWindowManager, isWindowManagementSupported, getPlatformNotes } = await import('./window-manager/index.js');
+
+        if (!isWindowManagementSupported()) {
+          sendJson(res, 501, { error: 'Window management not supported on this platform' });
+          return;
+        }
+
+        const manager = createWindowManager();
+        const displays = await manager.getDisplays();
+        const platformNote = getPlatformNotes();
+
+        sendJson(res, 200, {
+          displays,
+          platform: manager.getPlatform(),
+          supported: manager.isSupported(),
+          note: platformNote,
+        });
+      } catch (error) {
+        sendJson(res, 500, { error: 'Failed to get displays' });
+      }
+      return;
+    }
+
+    // Route: POST /api/tile/sessions
+    // Tile multiple sessions side-by-side
+    // Body: { sessionIds: string[], layout?: 'side-by-side' | 'thirds' | '2x2', displayId?: string }
+    if (method === 'POST' && url === '/api/tile/sessions') {
+      const body = await parseBody<{
+        sessionIds: string[];
+        layout?: 'side-by-side' | 'thirds' | '2x2';
+        displayId?: string;
+      }>(req);
+
+      if (!body || !body.sessionIds || !Array.isArray(body.sessionIds) || body.sessionIds.length === 0) {
+        sendJson(res, 400, { error: 'Missing or invalid sessionIds array' });
+        return;
+      }
+
+      try {
+        const { createWindowManager, isWindowManagementSupported, suggestLayout } = await import('./window-manager/index.js');
+
+        if (!isWindowManagementSupported()) {
+          sendJson(res, 501, { error: 'Window management not supported on this platform' });
+          return;
+        }
+
+        // Get session terminal keys from the session index
+        const terminalKeys: string[] = [];
+        const missingKeys: string[] = [];
+
+        for (const sessionId of body.sessionIds) {
+          const entry = await getSessionEntry(sessionId);
+          // Sessions have terminal_key in the live session registry, not in the cache
+          // We need to get this from the WebSocket sessions
+          // For now, try to find terminal_key from the session if available
+          if (entry) {
+            // The cache doesn't have terminal_key, so we'll need to get it from live sessions
+            // This is a limitation - we can only tile live sessions that the server knows about
+            missingKeys.push(sessionId);
+          } else {
+            missingKeys.push(sessionId);
+          }
+        }
+
+        // Since we can't get terminal_keys from the cache, this endpoint needs to be called
+        // with terminal_keys directly or from the live session registry
+        // Return an error explaining this limitation
+        sendJson(res, 400, {
+          error: 'This endpoint requires terminal_keys. Use the WebSocket tile command or /api/tile/with-keys instead.',
+          sessionIds: body.sessionIds,
+        });
+      } catch (error) {
+        sendJson(res, 500, { error: 'Failed to tile sessions' });
+      }
+      return;
+    }
+
+    // Route: POST /api/tile/with-keys
+    // Tile windows using terminal keys directly
+    // Body: { terminalKeys: string[], layout?: 'side-by-side' | 'thirds' | '2x2', displayId?: string }
+    if (method === 'POST' && url === '/api/tile/with-keys') {
+      const body = await parseBody<{
+        terminalKeys: string[];
+        layout?: 'side-by-side' | 'thirds' | '2x2';
+        displayId?: string;
+      }>(req);
+
+      if (!body || !body.terminalKeys || !Array.isArray(body.terminalKeys) || body.terminalKeys.length === 0) {
+        sendJson(res, 400, { error: 'Missing or invalid terminalKeys array' });
+        return;
+      }
+
+      try {
+        const { createWindowManager, isWindowManagementSupported, suggestLayout } = await import('./window-manager/index.js');
+
+        if (!isWindowManagementSupported()) {
+          sendJson(res, 501, { error: 'Window management not supported on this platform' });
+          return;
+        }
+
+        const manager = createWindowManager();
+        const layout = body.layout || suggestLayout(body.terminalKeys.length);
+
+        // Get target display if specified
+        let targetDisplay;
+        if (body.displayId) {
+          const displays = await manager.getDisplays();
+          targetDisplay = displays.find(d => d.id === body.displayId);
+        }
+
+        const result = await manager.tileWindows(body.terminalKeys, layout, targetDisplay);
+
+        sendJson(res, result.success ? 200 : 207, {
+          success: result.success,
+          positioned: result.positioned,
+          total: result.total,
+          layout,
+          errors: result.errors,
+        });
+      } catch (error) {
+        sendJson(res, 500, { error: 'Failed to tile windows' });
+      }
+      return;
+    }
+
     // === Static File Serving (GUI) ===
 
     if (method === 'GET' && guiAvailable) {
