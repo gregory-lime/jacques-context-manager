@@ -12,6 +12,8 @@ import { ParsedEntry } from "../session/parser.js";
 import {
   detectEmbeddedPlans,
   extractPlanTitle,
+  extractPlanBody,
+  generateBodyHash,
   splitMultiplePlans,
   generatePlanFingerprint,
   calculateSimilarity,
@@ -211,6 +213,81 @@ describe("Title Extraction", () => {
   });
 });
 
+describe("Body Extraction", () => {
+  it("extracts body by stripping first heading", () => {
+    const content = "# Plan Title\n\nBody content here.\n\n## Section 2\n\nMore content.";
+    const body = extractPlanBody(content);
+    expect(body).toBe("Body content here.\n\n## Section 2\n\nMore content.");
+    expect(body).not.toContain("# Plan Title");
+  });
+
+  it("preserves subheadings in body", () => {
+    const content = "# Main Title\n\n## Section 1\n\nContent 1\n\n## Section 2\n\nContent 2";
+    const body = extractPlanBody(content);
+    expect(body).toContain("## Section 1");
+    expect(body).toContain("## Section 2");
+  });
+
+  it("returns entire content when no heading present", () => {
+    const content = "Just some plain content without headings";
+    const body = extractPlanBody(content);
+    expect(body).toBe(content);
+  });
+
+  it("handles empty content", () => {
+    const body = extractPlanBody("");
+    expect(body).toBe("");
+  });
+
+  it("handles content with only heading", () => {
+    const content = "# Just a Heading";
+    const body = extractPlanBody(content);
+    expect(body).toBe("");
+  });
+});
+
+describe("Body Hash", () => {
+  it("generates same hash for plans with different titles but same body", () => {
+    const plan1 = "# Title A\n\nImplement authentication with JWT tokens and refresh mechanism.";
+    const plan2 = "# Title B\n\nImplement authentication with JWT tokens and refresh mechanism.";
+
+    const hash1 = generateBodyHash(plan1);
+    const hash2 = generateBodyHash(plan2);
+
+    expect(hash1).toBe(hash2);
+  });
+
+  it("generates different hash for plans with same title but different body", () => {
+    const plan1 = "# Auth System\n\nImplement JWT tokens.";
+    const plan2 = "# Auth System\n\nImplement OAuth2 flow.";
+
+    const hash1 = generateBodyHash(plan1);
+    const hash2 = generateBodyHash(plan2);
+
+    expect(hash1).not.toBe(hash2);
+  });
+
+  it("normalizes whitespace when hashing body", () => {
+    const plan1 = "# Title\n\nSome   content   here";
+    const plan2 = "# Title\n\nSome content here";
+
+    const hash1 = generateBodyHash(plan1);
+    const hash2 = generateBodyHash(plan2);
+
+    expect(hash1).toBe(hash2);
+  });
+
+  it("is case-insensitive when hashing body", () => {
+    const plan1 = "# Title\n\nSome Content Here";
+    const plan2 = "# Title\n\nsome content here";
+
+    const hash1 = generateBodyHash(plan1);
+    const hash2 = generateBodyHash(plan2);
+
+    expect(hash1).toBe(hash2);
+  });
+});
+
 describe("Deduplication", () => {
   it("generates consistent hash for identical content", () => {
     const content = "# Plan A\n\nSome content here";
@@ -270,6 +347,23 @@ describe("Deduplication", () => {
     expect(generatePlanFingerprint(short).lengthRange).toBe("0-500");
     expect(generatePlanFingerprint(medium).lengthRange).toBe("501-2000");
     expect(generatePlanFingerprint(long).lengthRange).toBe("2001+");
+  });
+
+  it("fingerprint includes bodyHash", () => {
+    const content = "# Plan Title\n\nBody content here";
+    const fingerprint = generatePlanFingerprint(content);
+
+    expect(fingerprint.bodyHash).toBeDefined();
+    expect(typeof fingerprint.bodyHash).toBe("string");
+    expect(fingerprint.bodyHash.length).toBe(64); // SHA-256 hex
+  });
+
+  it("fingerprint bodyHash matches generateBodyHash", () => {
+    const content = "# Plan Title\n\nBody content here";
+    const fingerprint = generatePlanFingerprint(content);
+    const bodyHash = generateBodyHash(content);
+
+    expect(fingerprint.bodyHash).toBe(bodyHash);
   });
 });
 
@@ -544,5 +638,90 @@ describe("Duplicate Plan Detection", () => {
     // Try to find - should not match due to low similarity
     const duplicate = await findDuplicatePlan(content2, testDir);
     expect(duplicate).toBeNull();
+  });
+
+  it("finds duplicate by body hash when titles differ", async () => {
+    // Same body content, different titles - this is the key new behavior
+    const content1 = "# Dashboard Asset Lists — Timestamps, Chronological Sort, Token Display\n\n" +
+      "## Overview\n\nImplement timestamps and chronological sorting for asset lists.\n\n" +
+      "## Implementation\n\n1. Add timestamp field to assets\n2. Sort by creation date\n3. Display token counts";
+
+    const content2 = "# Navigator Improvements (Timestamps, Chronological Order, Token Counts)\n\n" +
+      "## Overview\n\nImplement timestamps and chronological sorting for asset lists.\n\n" +
+      "## Implementation\n\n1. Add timestamp field to assets\n2. Sort by creation date\n3. Display token counts";
+
+    // Create first plan
+    await indexEmbeddedPlan(
+      content1,
+      "2026-02-01_dashboard-assets.md",
+      "session-1",
+      testDir
+    );
+
+    // Try to find duplicate - should match via body hash
+    const duplicate = await findDuplicatePlan(content2, testDir);
+
+    expect(duplicate).not.toBeNull();
+    expect(duplicate?.filename).toBe("2026-02-01_dashboard-assets.md");
+  });
+
+  it("finds duplicate by 75% similarity regardless of title", async () => {
+    // Similar content (>75%) with different titles
+    const content1 = "# Authentication System Design\n\n" +
+      "Implement JWT authentication with refresh tokens for secure user session management. " +
+      "Include token generation, validation, storage, and automatic refresh mechanisms. " +
+      "Add middleware for protected routes and implement logout functionality.";
+
+    const content2 = "# Secure Auth Implementation\n\n" +
+      "Implement JWT authentication with refresh tokens for secure user session management. " +
+      "Include token generation, validation, storage, and automatic refresh mechanisms. " +
+      "Add middleware for protected routes and implement user logout functionality.";
+
+    // Create first plan
+    await indexEmbeddedPlan(
+      content1,
+      "2026-02-01_auth-design.md",
+      "session-1",
+      testDir
+    );
+
+    // Try to find duplicate - should match via similarity (>75%)
+    const duplicate = await findDuplicatePlan(content2, testDir);
+
+    expect(duplicate).not.toBeNull();
+    expect(duplicate?.filename).toBe("2026-02-01_auth-design.md");
+  });
+
+  it("does not match plans below 75% similarity", async () => {
+    // Content with less than 75% overlap
+    const content1 = "# User Authentication\n\n" +
+      "Set up basic username/password authentication with bcrypt hashing. " +
+      "Store credentials in PostgreSQL database with proper indexing.";
+
+    const content2 = "# Payment Processing\n\n" +
+      "Integrate Stripe API for payment processing. " +
+      "Handle webhooks for subscription events and refunds.";
+
+    // Create first plan
+    await indexEmbeddedPlan(
+      content1,
+      "2026-02-01_auth.md",
+      "session-1",
+      testDir
+    );
+
+    // Try to find duplicate - should NOT match (different topic, low similarity)
+    const duplicate = await findDuplicatePlan(content2, testDir);
+    expect(duplicate).toBeNull();
+  });
+
+  it("similarity threshold edge case: exactly 75%", async () => {
+    // Test the boundary at 75%
+    const similarity = calculateSimilarity(
+      "word1 word2 word3 word4 word5 word6 word7 word8",
+      "word1 word2 word3 word4 word5 word6 different different"
+    );
+    // 6 shared out of 10 unique = 60%, so this should not match
+    expect(similarity).toBeLessThan(0.75);
   });
 });
