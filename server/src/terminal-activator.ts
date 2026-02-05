@@ -36,6 +36,7 @@ export interface ActivationResult {
  * - TTY:<tty-path>
  * - PID:<process-id>
  * - AUTO:* or UNKNOWN:* (unsupported)
+ * - DISCOVERED:<type>:<value>[:extra] (from process scanner, unwrapped to inner type)
  */
 export async function activateTerminal(terminalKey: string): Promise<ActivationResult> {
   const colonIndex = terminalKey.indexOf(':');
@@ -47,6 +48,10 @@ export async function activateTerminal(terminalKey: string): Promise<ActivationR
   const value = terminalKey.substring(colonIndex + 1);
 
   switch (prefix) {
+    case 'DISCOVERED':
+      // DISCOVERED keys have format: DISCOVERED:<type>:<value>[:pid]
+      // Extract the inner key and try to activate it
+      return activateDiscoveredTerminal(value);
     case 'ITERM':
       return activateITerm(value);
     case 'KITTY':
@@ -65,6 +70,62 @@ export async function activateTerminal(terminalKey: string): Promise<ActivationR
       return { success: false, method: 'unsupported', error: 'Terminal does not support remote activation' };
     default:
       return { success: false, method: 'unsupported', error: `Unknown terminal key prefix: ${prefix}` };
+  }
+}
+
+/**
+ * Activate a terminal from a DISCOVERED key.
+ *
+ * Discovered key formats (after DISCOVERED: prefix is stripped):
+ * - iTerm2:w0t0p0:<uuid>  → use ITERM activation with uuid
+ * - TTY:<tty-path>:<pid>  → use TTY activation with tty-path
+ * - PID:<pid>             → use PID activation
+ */
+async function activateDiscoveredTerminal(innerKey: string): Promise<ActivationResult> {
+  const colonIndex = innerKey.indexOf(':');
+  if (colonIndex === -1) {
+    return { success: false, method: 'unsupported', error: `Invalid discovered key format: ${innerKey}` };
+  }
+
+  const innerType = innerKey.substring(0, colonIndex);
+  const innerValue = innerKey.substring(colonIndex + 1);
+
+  switch (innerType) {
+    case 'iTerm2': {
+      // iTerm2 discovered keys have format: iTerm2:w0t0p0:<uuid>
+      // The UUID is after the second colon
+      const secondColon = innerValue.indexOf(':');
+      if (secondColon === -1) {
+        // Just a single value, use it directly
+        return activateITerm(innerValue);
+      }
+      // Extract UUID (everything after w0t0p0:)
+      const uuid = innerValue.substring(secondColon + 1);
+      return activateITerm(uuid);
+    }
+    case 'TTY': {
+      // TTY discovered keys have format: TTY:<tty-path>:<pid>
+      // We need just the tty-path for activation
+      const lastColon = innerValue.lastIndexOf(':');
+      if (lastColon === -1) {
+        // No PID suffix, use value as-is
+        return activateTerminalApp(innerValue);
+      }
+      // Check if the last segment is a PID (all digits)
+      const possiblePid = innerValue.substring(lastColon + 1);
+      if (/^\d+$/.test(possiblePid)) {
+        // Last part is a PID, strip it
+        const ttyPath = innerValue.substring(0, lastColon);
+        return activateTerminalApp(ttyPath);
+      }
+      // Not a PID suffix, use full value
+      return activateTerminalApp(innerValue);
+    }
+    case 'PID':
+      return activateByPid(innerValue);
+    default:
+      // Unknown inner type, try using it as-is by reconstructing the key
+      return activateTerminal(`${innerType}:${innerValue}`);
   }
 }
 
@@ -152,11 +213,14 @@ async function activateWezTerm(paneId: string): Promise<ActivationResult> {
  * Uses AppleScript to iterate windows/tabs and match the tty.
  */
 async function activateTerminalApp(ttyPath: string): Promise<ActivationResult> {
+  // Normalize TTY path - ps returns "ttys012" but Terminal.app expects "/dev/ttys012"
+  const normalizedPath = ttyPath.startsWith('/dev/') ? ttyPath : `/dev/${ttyPath}`;
+
   const script = `
     tell application "Terminal"
       repeat with w in windows
         repeat with t in tabs of w
-          if tty of t is "${ttyPath}" then
+          if tty of t is "${normalizedPath}" then
             set selected tab of w to t
             set index of w to 1
             activate
@@ -174,7 +238,7 @@ async function activateTerminalApp(ttyPath: string): Promise<ActivationResult> {
     if (result === 'ok') {
       return { success: true, method: 'terminal_app' };
     }
-    return { success: false, method: 'terminal_app', error: `TTY not found: ${ttyPath}` };
+    return { success: false, method: 'terminal_app', error: `TTY not found: ${normalizedPath}` };
   } catch (err) {
     return { success: false, method: 'terminal_app', error: formatError(err) };
   }

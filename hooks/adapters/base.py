@@ -188,7 +188,7 @@ class BaseAdapter(ABC):
         """
         payload = {
             "event": event,
-            "timestamp": time.time(),
+            "timestamp": int(time.time() * 1000),  # Convert to milliseconds
             "session_id": session_id,
             "source": self.source,
         }

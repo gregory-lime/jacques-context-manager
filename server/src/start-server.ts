@@ -18,6 +18,7 @@ import { NotificationService } from './services/notification-service.js';
 import { HandoffWatcher } from './watchers/handoff-watcher.js';
 import { EventHandler } from './handlers/event-handler.js';
 import { scanForActiveSessions } from './process-scanner.js';
+import { extractSessionCatalog } from '@jacques/core';
 import type {
   ClientMessage,
   AutoCompactToggledMessage,
@@ -80,7 +81,26 @@ export async function startEmbeddedServer(
   const logger = createLogger({ silent, prefix: 'Server' });
 
   // Initialize core components
-  const registry = new SessionRegistry({ silent });
+  const registry = new SessionRegistry({
+    silent,
+    // Trigger catalog extraction when a session is removed (Ctrl+C, crash, etc.)
+    onSessionRemoved: (session) => {
+      if (session.transcript_path && session.cwd) {
+        logger.log(`Triggering catalog extraction for removed session: ${session.session_id}`);
+        extractSessionCatalog(session.transcript_path, session.cwd)
+          .then((result) => {
+            if (result.error) {
+              logger.warn(`Catalog extraction failed: ${result.error}`);
+            } else if (!result.skipped) {
+              logger.log(`Catalog extracted for session ${session.session_id}`);
+            }
+          })
+          .catch((err) => {
+            logger.warn(`Catalog extraction error: ${err}`);
+          });
+      }
+    },
+  });
   let focusWatcher: { stop: () => void } | null = null;
   let httpServer: HttpApiServer | null = null;
 
@@ -584,6 +604,9 @@ export async function startEmbeddedServer(
 
     // Start stale session cleanup
     registry.startCleanup(ServerConfig.staleSessionCleanupMinutes);
+
+    // Start process verification to detect dead sessions (every 30 seconds)
+    registry.startProcessVerification(30000);
 
     // Start terminal focus watcher
     focusWatcher = startFocusWatcher(

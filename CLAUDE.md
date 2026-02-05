@@ -99,6 +99,33 @@ Dashboard (Ink/React CLI)
 
 **Build order**: Core → Server → Dashboard (each depends on the previous)
 
+## Session Lifecycle
+
+Sessions are tracked through their entire lifecycle, from start to end.
+
+### Session Detection
+- **Hooks**: When Claude Code starts, `SessionStart` hook fires → registers session with terminal identity
+- **Process Scanner**: At server startup, scans for running `claude` processes → discovers active sessions from JSONL files
+- **Auto-registration**: `statusLine` hook can auto-register sessions that started before the server
+
+### Session Termination
+- **Normal exit**: `SessionEnd` hook fires → unregisters session, triggers catalog extraction
+- **Ctrl+C / Crash**: No hook fires → process verification detects dead process → unregisters session, triggers catalog extraction
+
+### Process Verification (every 30s)
+Sessions with PID-based terminal keys are verified:
+1. Extract PID from terminal_key (e.g., `DISCOVERED:TTY:ttys012:68231`)
+2. Check if process is still running (`kill -0 PID`)
+3. If dead, unregister session and trigger catalog extraction
+
+### Catalog Extraction on Removal
+When any session is removed (hook, process verification, or cleanup):
+1. Extract session manifest → `.jacques/sessions/{id}.json`
+2. Extract plans → `.jacques/plans/`
+3. Extract subagent results → `.jacques/subagents/`
+
+This ensures sessions killed with Ctrl+C are still saved to history with their plans.
+
 ## TypeScript Configuration
 
 - **Target**: ES2022

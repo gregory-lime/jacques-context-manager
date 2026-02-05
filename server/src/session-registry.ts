@@ -20,10 +20,16 @@ import type {
 import type { Logger } from './logging/logger-factory.js';
 import { createLogger } from './logging/logger-factory.js';
 import type { DetectedSession } from './process-scanner.js';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 export interface SessionRegistryOptions {
   /** Suppress console output */
   silent?: boolean;
+  /** Callback when a session is removed (for triggering catalog extraction) */
+  onSessionRemoved?: (session: Session) => void;
   /** Optional logger for dependency injection */
   logger?: Logger;
 }
@@ -42,11 +48,14 @@ export class SessionRegistry {
   private sessions = new Map<string, Session>();
   private focusedSessionId: string | null = null;
   private cleanupInterval: NodeJS.Timeout | null = null;
+  private processVerifyInterval: NodeJS.Timeout | null = null;
   private logger: Logger;
+  private onSessionRemovedCallback?: (session: Session) => void;
 
   constructor(options: SessionRegistryOptions = {}) {
     // Support both old silent flag and new logger injection
     this.logger = options.logger ?? createLogger({ silent: options.silent });
+    this.onSessionRemovedCallback = options.onSessionRemoved;
   }
 
   // Convenience accessors for logging (messages already include [Registry] prefix)
@@ -131,6 +140,17 @@ export class SessionRegistry {
     // We need to normalize these to "claude_code" for our internal tracking
     const rawSource = event.source || 'claude_code';
     const source: SessionSource = ['startup', 'clear', 'resume'].includes(rawSource) ? 'claude_code' : rawSource as SessionSource;
+
+    // Clean up any existing sessions with the same terminal_key (different session_id)
+    // This handles the case where a new session starts in the same terminal tab
+    if (event.terminal_key) {
+      for (const [id, session] of this.sessions) {
+        if (id !== event.session_id && session.terminal_key === event.terminal_key) {
+          this.log(`[Registry] Removing stale session ${id} (same terminal_key as new session ${event.session_id})`);
+          this.unregisterSession(id);
+        }
+      }
+    }
 
     // Check if session was already auto-registered from context_update or discovered at startup
     const existing = this.sessions.get(event.session_id);
@@ -340,6 +360,16 @@ export class SessionRegistry {
     // Update terminal_key if provided (from statusLine hook)
     if (event.terminal_key && event.terminal_key !== '' && session.terminal_key.startsWith('AUTO:')) {
       this.log(`[Registry] Updating terminal_key from context_update: ${session.terminal_key} -> ${event.terminal_key}`);
+
+      // Clean up any existing sessions with the same terminal_key (same logic as registerSession)
+      // This handles the case where an older session in the same terminal tab still has this terminal_key
+      for (const [id, existingSession] of this.sessions) {
+        if (id !== event.session_id && existingSession.terminal_key === event.terminal_key) {
+          this.log(`[Registry] Removing stale session ${id} (same terminal_key as updated session ${event.session_id})`);
+          this.unregisterSession(id);
+        }
+      }
+
       session.terminal_key = event.terminal_key;
     }
 
@@ -412,6 +442,15 @@ export class SessionRegistry {
       return;
     }
 
+    // Call the removal callback before deleting (for catalog extraction, etc.)
+    if (this.onSessionRemovedCallback) {
+      try {
+        this.onSessionRemovedCallback(session);
+      } catch (err) {
+        this.warn(`[Registry] onSessionRemoved callback error: ${err}`);
+      }
+    }
+
     this.sessions.delete(sessionId);
     this.log(`[Registry] Session removed: ${sessionId}`);
 
@@ -421,7 +460,7 @@ export class SessionRegistry {
       const remaining = Array.from(this.sessions.values())
         .sort((a, b) => b.last_activity - a.last_activity);
       this.focusedSessionId = remaining[0]?.session_id || null;
-      
+
       if (this.focusedSessionId) {
         this.log(`[Registry] Focus shifted to: ${this.focusedSessionId}`);
       }
@@ -583,5 +622,100 @@ export class SessionRegistry {
       this.cleanupInterval = null;
       this.log('[Registry] Stale session cleanup stopped');
     }
+    if (this.processVerifyInterval) {
+      clearInterval(this.processVerifyInterval);
+      this.processVerifyInterval = null;
+    }
+  }
+
+  /**
+   * Check if a process is still running
+   */
+  private async isProcessRunning(pid: number): Promise<boolean> {
+    if (pid <= 0) return false;
+    try {
+      // Use kill -0 which checks if process exists without sending a signal
+      await execAsync(`kill -0 ${pid} 2>/dev/null`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Extract PID from terminal_key if present
+   */
+  private extractPidFromTerminalKey(terminalKey: string): number | null {
+    // Handle formats:
+    // - DISCOVERED:TTY:ttys012:68231
+    // - DISCOVERED:PID:12345
+    // - PID:12345
+    if (!terminalKey) return null;
+
+    // Check for DISCOVERED:PID:xxx or PID:xxx
+    const pidMatch = terminalKey.match(/(?:DISCOVERED:)?PID:(\d+)/);
+    if (pidMatch) {
+      return parseInt(pidMatch[1], 10);
+    }
+
+    // Check for DISCOVERED:TTY:xxx:pid at the end
+    const ttyMatch = terminalKey.match(/DISCOVERED:TTY:[^:]+:(\d+)$/);
+    if (ttyMatch) {
+      return parseInt(ttyMatch[1], 10);
+    }
+
+    return null;
+  }
+
+  /**
+   * Verify that sessions with PID-based terminal_keys still have running processes.
+   * Removes sessions whose processes are no longer running.
+   */
+  async verifyProcesses(): Promise<void> {
+    const sessionsToRemove: string[] = [];
+
+    for (const [id, session] of this.sessions) {
+      const pid = this.extractPidFromTerminalKey(session.terminal_key);
+      if (pid !== null) {
+        const isRunning = await this.isProcessRunning(pid);
+        if (!isRunning) {
+          this.log(`[Registry] Process ${pid} no longer running for session ${id}`);
+          sessionsToRemove.push(id);
+        }
+      }
+    }
+
+    for (const id of sessionsToRemove) {
+      this.log(`[Registry] Removing session with dead process: ${id}`);
+      this.unregisterSession(id);
+    }
+
+    if (sessionsToRemove.length > 0) {
+      this.log(`[Registry] Removed ${sessionsToRemove.length} session(s) with dead processes`);
+    }
+  }
+
+  /**
+   * Start periodic process verification
+   * @param intervalMs Interval between checks in milliseconds (default: 30 seconds)
+   */
+  startProcessVerification(intervalMs: number = 30000): void {
+    if (this.processVerifyInterval) {
+      return; // Already running
+    }
+
+    // Run immediately on start
+    this.verifyProcesses().catch((err) => {
+      this.warn(`[Registry] Process verification failed: ${err}`);
+    });
+
+    // Then run periodically
+    this.processVerifyInterval = setInterval(() => {
+      this.verifyProcesses().catch((err) => {
+        this.warn(`[Registry] Process verification failed: ${err}`);
+      });
+    }, intervalMs);
+
+    this.log(`[Registry] Process verification started (interval: ${intervalMs / 1000}s)`);
   }
 }
